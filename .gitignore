@@ -1,0 +1,90 @@
+# ============================================================
+# Elixir / Mix
+# ============================================================
+
+# Artefatos compilados
+/_build/
+
+# Cobertura de testes
+/cover/
+
+# Dependências
+/deps/
+
+# Documentação gerada
+/doc/
+
+# Fetch local de deps
+/.fetch
+
+# Crash dump da VM Erlang
+erl_crash.dump
+
+# Arquivos de archive do Mix
+*.ez
+
+# Arquivos temporários (testes, uploads locais, etc.)
+/tmp/
+
+# Pacote hex gerado via "mix hex.build"
+projeto_prisma-*.tar
+
+# ============================================================
+# Phoenix
+# ============================================================
+
+# Assets compilados pelo esbuild/tailwind
+/priv/static/assets/
+
+# Cache de assets com digest (gerado em produção)
+/priv/static/cache_manifest.json
+
+# Uploads feitos por usuários em desenvolvimento
+/priv/uploads/
+
+# Certificado auto-assinado gerado via "mix phx.gen.cert"
+/priv/cert/
+
+# ============================================================
+# Tailwind / Node
+# ============================================================
+
+/assets/node_modules/
+npm-debug.log
+yarn-error.log
+.pnp.*
+
+# Binários do tailwind/esbuild baixados pelo Mix
+/_build/tailwind-*
+/_build/esbuild-*
+
+# ============================================================
+# Banco de dados
+# ============================================================
+
+# Arquivo de banco SQLite local (caso use em dev/test)
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================================
+# Ambiente e segredos
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+# ============================================================
+# Editores e SO
+# ============================================================
+
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.iml
+
