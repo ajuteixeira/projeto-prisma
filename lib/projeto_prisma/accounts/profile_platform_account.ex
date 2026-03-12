@@ -1,8 +1,8 @@
-defmodule ProjetoPrisma.Profiles.ProfilePlatformAccount do
+defmodule ProjetoPrisma.Accounts.ProfilePlatformAccount do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias ProjetoPrisma.Profiles.Profile
+  alias ProjetoPrisma.Accounts.Profile
   alias ProjetoPrisma.Catalog.Platform
 
   schema "profile_platform_accounts" do

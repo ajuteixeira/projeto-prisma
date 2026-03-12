@@ -1,8 +1,8 @@
-defmodule ProjetoPrisma.Profiles.ProfileGame do
+defmodule ProjetoPrisma.Accounts.ProfileGame do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias ProjetoPrisma.Profiles.Profile
+  alias ProjetoPrisma.Accounts.Profile
   alias ProjetoPrisma.Catalog.PlatformGame
 
   schema "profile_games" do

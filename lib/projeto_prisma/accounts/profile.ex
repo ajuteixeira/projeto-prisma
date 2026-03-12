@@ -1,4 +1,4 @@
-defmodule ProjetoPrisma.Profiles.Profile do
+defmodule ProjetoPrisma.Accounts.Profile do
   use Ecto.Schema
   import Ecto.Changeset
 
