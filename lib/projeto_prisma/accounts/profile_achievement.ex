@@ -1,8 +1,8 @@
-defmodule ProjetoPrisma.Profiles.ProfileAchievement do
+defmodule ProjetoPrisma.Accounts.ProfileAchievement do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias ProjetoPrisma.Profiles.ProfileGame
+  alias ProjetoPrisma.Accounts.ProfileGame
   alias ProjetoPrisma.Catalog.Achievement
 
   schema "profile_achievements" do
