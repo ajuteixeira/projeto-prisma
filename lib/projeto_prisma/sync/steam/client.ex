@@ -29,4 +29,13 @@ defmodule ProjetoPrisma.Sync.Steam.Client do
       ]
     )
   end
+
+  def get_schema_for_game(app_id, api_key) do
+    Req.get("#{@base_url}/ISteamUserStats/GetSchemaForGame/v2/",
+      params: [
+        key: api_key,
+        appid: app_id
+      ]
+    )
+  end
 end
