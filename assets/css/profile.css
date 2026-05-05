@@ -1,4 +1,39 @@
 /* ===========================
+   TOP CARDS — equal heights
+   =========================== */
+:root {
+  --profile-top-card-height: 345px;
+}
+
+.profile-card,
+.recently-played-card {
+  height: var(--profile-top-card-height);
+  display: flex;
+  flex-direction: column;
+}
+
+.recently-played-card > [data-phx-main],
+.recently-played-card > [data-phx-session],
+.recently-played-card > [data-phx-root-id] {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.profile-recently-played-root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.recently-played-card .profile-recently-played-hero {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ===========================
    PROFILE CARD
    =========================== */
 .profile-card {
@@ -151,6 +186,161 @@
   padding: 0 2px;
   word-break: break-word;
   margin-bottom: 2px;
+}
+
+.achievement-icon-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: cover;
+  margin-bottom: 6px;
+  margin-top: -2px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.pinned-achievement.pinned-empty {
+  background: rgba(255, 255, 255, 0.03);
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #6b7280;
+  cursor: default;
+}
+
+.pinned-achievement.pinned-empty:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.pinned-manage-btn {
+  color: #60a5fa;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.pinned-manage-btn:hover {
+  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.08);
+}
+
+/* ===========================
+   PROFILE BIO (clamp + stable height)
+   =========================== */
+.profile-bio {
+  min-height: 2.6em;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ===========================
+   MANAGE ACHIEVEMENTS MODAL
+   =========================== */
+.manage-modal-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.manage-modal-card {
+  background: rgba(96, 165, 250, 0.06);
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+.manage-modal-card:hover {
+  border-color: rgba(96, 165, 250, 0.4);
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.manage-modal-card.is-selected {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.18);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+}
+
+.manage-modal-card.is-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.manage-modal-card .mm-icon-wrap {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 22px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.manage-modal-card .mm-icon-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.manage-modal-card .mm-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e5e7eb;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.manage-modal-card .mm-game {
+  font-size: 10.5px;
+  color: #9ca3af;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.manage-modal-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
 }
 
 /* ===========================
@@ -360,6 +550,14 @@
 /* ===========================
    RESPONSIVE — TABLET (≤ 768px)
    =========================== */
+@media (max-width: 1023px) {
+  .profile-card,
+  .recently-played-card {
+    height: auto;
+    min-height: 0;
+  }
+}
+
 @media (max-width: 768px) {
   .pinned-grid {
     grid-template-columns: repeat(2, 1fr);

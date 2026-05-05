@@ -4,6 +4,9 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
   alias ProjetoPrisma.Accounts
   alias ProjetoPrisma.Accounts.Scope
 
+  @max_pins 4
+  @bio_max 90
+
   @impl true
   def mount(_params, session, socket) do
     current_scope = resolve_current_scope(session)
@@ -11,6 +14,7 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
 
     # Get full_name from the user associated with the profile
     full_name = get_user_full_name(profile)
+    pinned_achievements = safe_list_pinned(current_scope)
 
     {:ok,
      socket
@@ -21,6 +25,12 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
      |> assign(:modal_error, nil)
      |> assign(:full_name, full_name)
      |> assign(:form, to_form(Accounts.change_profile(current_scope)))
+     |> assign(:pinned_achievements, pinned_achievements)
+     |> assign(:achievements_modal_open, false)
+     |> assign(:achievement_search, "")
+     |> assign(:available_achievements, [])
+     |> assign(:selected_achievement_ids, [])
+     |> assign(:achievements_modal_error, nil)
      |> allow_upload(:avatar,
        accept: ~w(.jpg .jpeg .png .gif .webp),
        max_entries: 1,
@@ -88,6 +98,7 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
   def handle_event("save_profile", %{"profile" => params} = full_params, socket) do
     username = String.trim(params["username"] || "")
     full_name = full_params["full_name"] || ""
+    bio = params["bio"] || ""
 
     cond do
       # Validate username length
@@ -132,6 +143,18 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
          |> assign(:modal_error, "Username ja esta em uso.")
          |> assign(:form, to_form(changeset))}
 
+      String.length(bio) > @bio_max ->
+        changeset =
+          socket.assigns.current_scope
+          |> Accounts.change_profile(params)
+          |> Ecto.Changeset.add_error(:bio, "deve ter no maximo #{@bio_max} caracteres")
+          |> Map.put(:action, :validate)
+
+        {:noreply,
+         socket
+         |> assign(:modal_error, "Bio deve ter no maximo #{@bio_max} caracteres.")
+         |> assign(:form, to_form(changeset))}
+
       true ->
         # Update full_name on users table
         Accounts.update_user_full_name(socket.assigns.current_scope, full_name)
@@ -170,6 +193,99 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
     end
   end
 
+  def handle_event("open_achievements_modal", _params, socket) do
+    scope = socket.assigns.current_scope
+    available = safe_list_available(scope, "")
+    pinned = safe_list_pinned(scope)
+    selected_ids = Enum.map(pinned, & &1.id)
+
+    {:noreply,
+     socket
+     |> assign(:achievements_modal_open, true)
+     |> assign(:achievement_search, "")
+     |> assign(:available_achievements, available)
+     |> assign(:selected_achievement_ids, selected_ids)
+     |> assign(:achievements_modal_error, nil)}
+  end
+
+  def handle_event("close_achievements_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:achievements_modal_open, false)
+     |> assign(:achievements_modal_error, nil)}
+  end
+
+  def handle_event("search_achievements", params, socket) do
+    query =
+      params
+      |> Map.get("achievement_search", params["value"] || "")
+      |> to_string()
+
+    available = safe_list_available(socket.assigns.current_scope, query)
+
+    {:noreply,
+     socket
+     |> assign(:achievement_search, query)
+     |> assign(:available_achievements, available)}
+  end
+
+  def handle_event("toggle_pinned_achievement", %{"id" => raw_id}, socket) do
+    id = parse_int(raw_id)
+    selected = socket.assigns.selected_achievement_ids
+
+    {new_selected, error} =
+      cond do
+        id in selected ->
+          {List.delete(selected, id), nil}
+
+        length(selected) >= @max_pins ->
+          {selected, "Voce so pode fixar ate #{@max_pins} conquistas."}
+
+        true ->
+          {selected ++ [id], nil}
+      end
+
+    {:noreply,
+     socket
+     |> assign(:selected_achievement_ids, new_selected)
+     |> assign(:achievements_modal_error, error)}
+  end
+
+  def handle_event("save_pinned_achievements", _params, socket) do
+    scope = socket.assigns.current_scope
+    ids = socket.assigns.selected_achievement_ids
+
+    case Accounts.update_pinned_achievements(scope, ids) do
+      {:ok, _} ->
+        pinned = safe_list_pinned(scope)
+
+        {:noreply,
+         socket
+         |> assign(:pinned_achievements, pinned)
+         |> assign(:achievements_modal_open, false)
+         |> assign(:achievements_modal_error, nil)}
+
+      {:error, :too_many_pins} ->
+        {:noreply,
+         assign(socket, :achievements_modal_error, "Voce so pode fixar ate #{@max_pins} conquistas.")}
+
+      {:error, :invalid_achievement_selection} ->
+        {:noreply,
+         assign(
+           socket,
+           :achievements_modal_error,
+           "Selecao invalida. Escolha apenas conquistas concluidas."
+         )}
+
+      {:error, :profile_not_found} ->
+        {:noreply, assign(socket, :achievements_modal_error, "Perfil nao encontrado.")}
+
+      {:error, _other} ->
+        {:noreply,
+         assign(socket, :achievements_modal_error, "Nao foi possivel salvar suas conquistas.")}
+    end
+  end
+
   defp process_and_save_avatar(socket) do
     case uploaded_entries(socket, :avatar) do
       {[entry], []} ->
@@ -195,6 +311,46 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
       cancel_upload(acc, :avatar, entry.ref)
     end)
   end
+
+  defp safe_list_pinned(nil), do: []
+
+  defp safe_list_pinned(scope) do
+    if function_exported?(Accounts, :list_pinned_achievements, 1) do
+      try do
+        Accounts.list_pinned_achievements(scope) || []
+      rescue
+        _ -> []
+      end
+    else
+      []
+    end
+  end
+
+  defp safe_list_available(nil, _query), do: []
+
+  defp safe_list_available(scope, query) do
+    if function_exported?(Accounts, :list_achieved_achievements, 2) do
+      try do
+        opts = if to_string(query) == "", do: [], else: [search: to_string(query)]
+        Accounts.list_achieved_achievements(scope, opts) || []
+      rescue
+        _ -> []
+      end
+    else
+      []
+    end
+  end
+
+  defp parse_int(v) when is_integer(v), do: v
+
+  defp parse_int(v) when is_binary(v) do
+    case Integer.parse(v) do
+      {n, _} -> n
+      :error -> nil
+    end
+  end
+
+  defp parse_int(_), do: nil
 
   @impl true
   def render(assigns) do
@@ -228,35 +384,48 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
         </div>
       </div>
 
-      <div :if={profile_bio(@profile) != ""} class="mt-4 text-sm text-gray-400" id="profile-bio">
-        <p>{profile_bio(@profile)}</p>
+      <div class="mt-4 text-sm text-gray-400" id="profile-bio">
+        <p class="profile-bio">{profile_bio(@profile)}</p>
       </div>
-      
+
     <!-- Pinned Achievements -->
       <div class="mt-6">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">
             Conquistas Fixadas
           </h3>
+          <button
+            type="button"
+            id="open-pin-modal"
+            phx-click="open_achievements_modal"
+            class="pinned-manage-btn"
+          >
+            <i class="fas fa-thumbtack"></i> Gerenciar
+          </button>
         </div>
         <div class="pinned-achievements">
           <div class="pinned-grid" id="pinned-grid">
-            <div class="pinned-achievement">
-              <div class="achievement-icon">🎮</div>
-              <div class="achievement-name">Em breve</div>
-            </div>
-            <div class="pinned-achievement">
-              <div class="achievement-icon">🎒</div>
-              <div class="achievement-name">Em breve</div>
-            </div>
-            <div class="pinned-achievement">
-              <div class="achievement-icon">💀</div>
-              <div class="achievement-name">Em breve</div>
-            </div>
-            <div class="pinned-achievement">
-              <div class="achievement-icon">🏆</div>
-              <div class="achievement-name">Em breve</div>
-            </div>
+            <%= for achievement <- pinned_with_padding(@pinned_achievements) do %>
+              <%= if achievement do %>
+                <div class="pinned-achievement" title={achievement_tooltip(achievement)}>
+                  <%= if has_icon_image?(achievement) do %>
+                    <img
+                      src={achievement.icon}
+                      alt={achievement.name || "Conquista"}
+                      class="achievement-icon-img"
+                    />
+                  <% else %>
+                    <div class="achievement-icon">🏆</div>
+                  <% end %>
+                  <div class="achievement-name">{achievement.name || "Conquista"}</div>
+                </div>
+              <% else %>
+                <div class="pinned-achievement pinned-empty">
+                  <div class="achievement-icon">📌</div>
+                  <div class="achievement-name">Vazio</div>
+                </div>
+              <% end %>
+            <% end %>
           </div>
         </div>
       </div>
@@ -396,11 +565,11 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
                 name={@form[:bio].name}
                 id="profile-bio-input"
                 placeholder="Conte um pouco sobre voce e seus jogos favoritos"
-                maxlength="160"
+                maxlength="90"
                 rows="3"
                 class="w-full px-4 py-3 bg-gray-700/50 text-white rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none transition-colors resize-none"
               >{@form[:bio].value}</textarea>
-              <p class="text-gray-500 text-sm mt-2">Maximo de 160 caracteres.</p>
+              <p class="text-gray-500 text-sm mt-2">Maximo de 90 caracteres.</p>
               <p
                 :for={msg <- Enum.map(@form[:bio].errors, &translate_error/1)}
                 class="text-red-400 text-sm mt-1"
@@ -431,8 +600,143 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
         </.form>
       </div>
     </div>
+
+    <!-- Manage Achievements Modal -->
+    <div
+      :if={@achievements_modal_open}
+      id="manage-achievements-modal"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50"
+      phx-window-keydown="close_achievements_modal"
+      phx-key="escape"
+    >
+      <div
+        class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-6 max-w-3xl w-full mx-4 shadow-2xl border border-gray-700/50 max-h-[90vh] overflow-y-auto"
+        phx-click-away="close_achievements_modal"
+      >
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-white">Gerenciar Conquistas Fixadas</h2>
+            <p class="text-xs text-gray-400 mt-1">
+              Selecione ate 4 conquistas para fixar no seu perfil.
+            </p>
+          </div>
+          <button
+            type="button"
+            phx-click="close_achievements_modal"
+            class="text-gray-400 hover:text-white transition-colors"
+          >
+            <i class="fas fa-times text-xl"></i>
+          </button>
+        </div>
+
+        <form phx-change="search_achievements" phx-submit="search_achievements" class="mb-4">
+          <div class="relative">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            <input
+              type="text"
+              id="achievement-search-input"
+              name="achievement_search"
+              value={@achievement_search}
+              placeholder="Buscar por conquista ou jogo..."
+              class="w-full pl-10 pr-4 py-2 bg-gray-700/50 text-white rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none transition-colors"
+              phx-debounce="200"
+            />
+          </div>
+        </form>
+
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-gray-300 font-medium">
+            {length(@selected_achievement_ids)}/4 selecionadas
+          </span>
+          <span :if={@achievements_modal_error} class="text-red-400 text-sm" role="alert">
+            {@achievements_modal_error}
+          </span>
+        </div>
+
+        <%= if Enum.empty?(@available_achievements) do %>
+          <div class="text-center py-10 text-gray-400 text-sm">
+            Nenhuma conquista encontrada. Conquiste algumas e elas aparecerao aqui!
+          </div>
+        <% else %>
+          <div class="manage-modal-list" id="manage-achievements-list">
+            <%= for ach <- @available_achievements do %>
+              <% selected? = ach.id in @selected_achievement_ids %>
+              <% disabled? =
+                not selected? and length(@selected_achievement_ids) >= 4 %>
+              <div
+                class={[
+                  "manage-modal-card",
+                  selected? && "is-selected",
+                  disabled? && "is-disabled"
+                ]}
+                phx-click="toggle_pinned_achievement"
+                phx-value-id={ach.id}
+              >
+                <div :if={selected?} class="manage-modal-check">
+                  <i class="fas fa-check"></i>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="mm-icon-wrap">
+                    <%= if has_icon_image?(ach) do %>
+                      <img src={ach.icon} alt={ach.name || "Conquista"} />
+                    <% else %>
+                      🏆
+                    <% end %>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="mm-name">{ach.name || "Conquista"}</div>
+                    <div :if={achievement_game(ach) != ""} class="mm-game">{achievement_game(ach)}</div>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+
+        <div class="flex gap-3 mt-6">
+          <button
+            type="button"
+            phx-click="close_achievements_modal"
+            class="flex-1 py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-all duration-300"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            phx-click="save_pinned_achievements"
+            phx-disable-with="Salvando..."
+            class="flex-1 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold rounded-lg transition-all duration-300"
+          >
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
     """
   end
+
+  defp pinned_with_padding(list) do
+    list = list || []
+    pad = @max_pins - length(list)
+    list ++ List.duplicate(nil, max(pad, 0))
+  end
+
+  defp has_icon_image?(%{icon: icon}) when is_binary(icon) do
+    icon = String.trim(icon)
+    icon != "" and (String.starts_with?(icon, "http") or String.starts_with?(icon, "data:"))
+  end
+
+  defp has_icon_image?(_), do: false
+
+  defp achievement_tooltip(%{name: name, game_name: game}) when is_binary(game) and game != "" do
+    "#{name || "Conquista"} • #{game}"
+  end
+
+  defp achievement_tooltip(%{name: name}), do: name || "Conquista"
+  defp achievement_tooltip(_), do: "Conquista"
+
+  defp achievement_game(%{game_name: name}) when is_binary(name), do: String.trim(name)
+  defp achievement_game(_), do: ""
 
   defp error_to_string(:too_large), do: "Arquivo muito grande. Maximo 2MB."
 

@@ -18,7 +18,7 @@ defmodule ProjetoPrisma.Accounts do
     Scope
   }
 
-  alias ProjetoPrisma.Catalog.Platform
+  alias ProjetoPrisma.Catalog.{Achievement, Platform}
 
   @doc """
   Registra um novo usuário com senha hasheada.
@@ -541,6 +541,82 @@ defmodule ProjetoPrisma.Accounts do
   end
 
   @doc """
+  Lista as conquistas desbloqueadas do usuario logado.
+
+  Aceita `:search` para filtrar pelo nome da conquista ou do jogo.
+  """
+  def list_achieved_achievements(scope, opts \\ [])
+
+  def list_achieved_achievements(%Scope{user: %User{id: user_id}}, opts) do
+    search = opts |> option_value(:search, "") |> normalize_search()
+
+    user_id
+    |> profile_achievement_display_query()
+    |> where([pa, _pg, _profile, _achievement, _platform_game, _game], pa.achieved == true)
+    |> maybe_filter_achievement_search(search)
+    |> order_achievement_display_query()
+    |> Repo.all()
+  end
+
+  def list_achieved_achievements(_scope, _opts), do: []
+
+  @doc """
+  Lista as conquistas fixadas do usuario logado ordenadas pela posicao.
+  """
+  def list_pinned_achievements(%Scope{user: %User{id: user_id}}) do
+    user_id
+    |> profile_achievement_display_query()
+    |> where(
+      [pa, _pg, _profile, _achievement, _platform_game, _game],
+      pa.achieved == true and not is_nil(pa.pinned_position)
+    )
+    |> order_by([pa, _pg, _profile, _achievement, _platform_game, _game], asc: pa.pinned_position)
+    |> Repo.all()
+  end
+
+  def list_pinned_achievements(_scope), do: []
+
+  @doc """
+  Atualiza as conquistas fixadas do usuario logado.
+
+  Recebe uma lista ordenada com ate 4 IDs de `profile_achievements`.
+  """
+  def update_pinned_achievements(scope, profile_achievement_ids)
+
+  def update_pinned_achievements(
+        %Scope{user: %User{id: user_id}} = scope,
+        profile_achievement_ids
+      ) do
+    with {:ok, ids} <- normalize_profile_achievement_ids(profile_achievement_ids),
+         :ok <- validate_pinned_achievement_count(ids),
+         %Profile{} = profile <- Repo.get_by(Profile, user_id: user_id),
+         :ok <- validate_pinned_achievement_selection(profile.id, ids) do
+      Repo.transaction(fn ->
+        profile.id
+        |> pinned_profile_achievements_query()
+        |> Repo.update_all(set: [pinned_position: nil])
+
+        ids
+        |> Enum.with_index(1)
+        |> Enum.each(fn {id, position} ->
+          ProfileAchievement
+          |> where([pa], pa.id == ^id)
+          |> Repo.update_all(set: [pinned_position: position])
+        end)
+
+        list_pinned_achievements(scope)
+      end)
+    else
+      :too_many_pins -> {:error, :too_many_pins}
+      :invalid_achievement_selection -> {:error, :invalid_achievement_selection}
+      nil -> {:error, :profile_not_found}
+    end
+  end
+
+  def update_pinned_achievements(_scope, _profile_achievement_ids),
+    do: {:error, :profile_not_found}
+
+  @doc """
   Lista todos os games de um usuário em uma plataforma.
 
   ## Exemplos
@@ -585,6 +661,154 @@ defmodule ProjetoPrisma.Accounts do
       platform_account: platform_account,
       games: games
     }
+  end
+
+  defp profile_achievement_display_query(user_id) do
+    ProfileAchievement
+    |> join(:inner, [pa], pg in assoc(pa, :profile_game))
+    |> join(:inner, [_pa, pg], profile in Profile, on: profile.id == pg.profile_id)
+    |> join(:inner, [pa, _pg, _profile], achievement in assoc(pa, :achievement))
+    |> join(:inner, [_pa, pg, _profile, _achievement], platform_game in assoc(pg, :platform_game))
+    |> join(
+      :inner,
+      [_pa, _pg, _profile, _achievement, platform_game],
+      game in assoc(platform_game, :game)
+    )
+    |> where(
+      [_pa, _pg, profile, _achievement, _platform_game, _game],
+      profile.user_id == ^user_id
+    )
+    |> select([pa, pg, _profile, achievement, _platform_game, game], %{
+      id: pa.id,
+      profile_achievement_id: pa.id,
+      profile_game_id: pg.id,
+      achievement_id: achievement.id,
+      name: achievement.name,
+      description: achievement.description,
+      icon: achievement.icon_image,
+      icon_image: achievement.icon_image,
+      game_name: game.name,
+      achieved: pa.achieved,
+      unlock_time: pa.unlock_time,
+      pinned_position: pa.pinned_position
+    })
+  end
+
+  defp maybe_filter_achievement_search(query, ""), do: query
+
+  defp maybe_filter_achievement_search(query, search) do
+    pattern = "%#{search}%"
+
+    where(
+      query,
+      [_pa, _pg, _profile, achievement, _platform_game, game],
+      ilike(achievement.name, ^pattern) or ilike(game.name, ^pattern)
+    )
+  end
+
+  defp order_achievement_display_query(query) do
+    order_by(
+      query,
+      [pa, _pg, _profile, _achievement, _platform_game, _game],
+      asc_nulls_last: pa.pinned_position,
+      desc_nulls_last: pa.unlock_time,
+      asc: pa.id
+    )
+  end
+
+  defp pinned_profile_achievements_query(profile_id) do
+    profile_game_ids_query =
+      ProfileGame
+      |> where([pg], pg.profile_id == ^profile_id)
+      |> select([pg], pg.id)
+
+    ProfileAchievement
+    |> where(
+      [pa],
+      pa.profile_game_id in subquery(profile_game_ids_query) and not is_nil(pa.pinned_position)
+    )
+  end
+
+  defp validate_pinned_achievement_selection(_profile_id, []), do: :ok
+
+  defp validate_pinned_achievement_selection(profile_id, ids) do
+    valid_ids =
+      ProfileAchievement
+      |> join(:inner, [pa], pg in assoc(pa, :profile_game))
+      |> where(
+        [pa, pg],
+        pg.profile_id == ^profile_id and pa.achieved == true and pa.id in ^ids
+      )
+      |> select([pa, _pg], pa.id)
+      |> Repo.all()
+
+    if MapSet.new(valid_ids) == MapSet.new(ids) do
+      :ok
+    else
+      :invalid_achievement_selection
+    end
+  end
+
+  defp validate_pinned_achievement_count(ids) when length(ids) <= 4, do: :ok
+  defp validate_pinned_achievement_count(_ids), do: :too_many_pins
+
+  defp normalize_profile_achievement_ids(ids) when is_list(ids) do
+    normalized =
+      Enum.reduce_while(ids, [], fn raw_id, acc ->
+        case normalize_profile_achievement_id(raw_id) do
+          {:ok, id} -> {:cont, [id | acc]}
+          :error -> {:halt, :error}
+        end
+      end)
+
+    case normalized do
+      :error ->
+        :invalid_achievement_selection
+
+      ids ->
+        ids = Enum.reverse(ids)
+
+        if Enum.uniq(ids) == ids do
+          {:ok, ids}
+        else
+          :invalid_achievement_selection
+        end
+    end
+  end
+
+  defp normalize_profile_achievement_ids(_ids), do: :invalid_achievement_selection
+
+  defp normalize_profile_achievement_id(id) when is_integer(id) and id > 0, do: {:ok, id}
+
+  defp normalize_profile_achievement_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {id, ""} when id > 0 -> {:ok, id}
+      _ -> :error
+    end
+  end
+
+  defp normalize_profile_achievement_id(_id), do: :error
+
+  defp option_value(opts, key, default) when is_list(opts) do
+    Keyword.get(opts, key, default)
+  end
+
+  defp option_value(%{} = opts, key, default) do
+    Map.get(opts, key) || Map.get(opts, Atom.to_string(key), default)
+  end
+
+  defp option_value(_opts, _key, default), do: default
+
+  defp normalize_search(nil), do: ""
+
+  defp normalize_search(search) when is_binary(search) do
+    String.trim(search)
+  end
+
+  defp normalize_search(search) do
+    search
+    |> to_string()
+    |> String.trim()
   end
 
   defp format_sync_error(reason) when is_binary(reason), do: reason
