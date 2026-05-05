@@ -18,9 +18,9 @@ defmodule ProjetoPrismaWeb.ProfileRecentlyPlayedLive do
   def render(assigns) do
     ~H"""
     <%!-- Hero image com gradiente --%>
-    <div class="rounded-2xl border border-gray-700 overflow-hidden">
+    <div class="rounded-2xl border border-gray-700 overflow-hidden profile-recently-played-root">
       <div
-        class="relative h-48"
+        class="relative profile-recently-played-hero h-48"
         style={"background: linear-gradient(to bottom, rgba(15, 20, 25, 0.3), rgba(15, 20, 25, 0.95)), url('#{hero_image(@game)}') center/cover;"}
       >
         <div class="absolute bottom-0 left-0 right-0 p-6">

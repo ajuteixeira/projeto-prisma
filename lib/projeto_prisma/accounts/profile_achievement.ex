@@ -6,17 +6,19 @@ defmodule ProjetoPrisma.Accounts.ProfileAchievement do
   alias ProjetoPrisma.Catalog.Achievement
 
   schema "profile_achievements" do
-    field :achieved, :boolean, default: false
-    field :unlock_time, :naive_datetime
+    field(:achieved, :boolean, default: false)
+    field(:unlock_time, :naive_datetime)
+    field(:pinned_position, :integer)
 
-    belongs_to :profile_game, ProfileGame
-    belongs_to :achievement, Achievement
+    belongs_to(:profile_game, ProfileGame)
+    belongs_to(:achievement, Achievement)
   end
 
   def changeset(profile_achievement, attrs) do
     profile_achievement
-    |> cast(attrs, [:achieved, :unlock_time, :profile_game_id, :achievement_id])
+    |> cast(attrs, [:achieved, :unlock_time, :pinned_position, :profile_game_id, :achievement_id])
     |> validate_required([:profile_game_id, :achievement_id, :achieved])
+    |> validate_inclusion(:pinned_position, 1..4)
     |> unique_constraint([:profile_game_id, :achievement_id])
   end
 end
