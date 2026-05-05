@@ -26,7 +26,7 @@ defmodule ProjetoPrisma.Accounts.ProfileDashboard do
   """
   def recently_played(profile_id) when is_integer(profile_id) do
     profile_id
-    |> games_with_metrics()
+    |> list_games(1, sort_order: :desc)
     |> List.first()
     |> maybe_put_recent_achievements()
   end
@@ -34,15 +34,35 @@ defmodule ProjetoPrisma.Accounts.ProfileDashboard do
   def recently_played(_), do: nil
 
   @doc """
-  Lista jogos recentes com metricas para tabela.
+  Retorna os detalhes de um jogo do profile com suas conquistas.
   """
-  def recent_games(profile_id, limit \\ 10)
-
-  def recent_games(profile_id, limit) when is_integer(profile_id) do
-    games_with_metrics(profile_id, limit: limit)
+  def game_details(profile_id, profile_game_id)
+      when is_integer(profile_id) and is_integer(profile_game_id) do
+    profile_id
+    |> games_with_metrics(profile_game_id: profile_game_id)
+    |> List.first()
+    |> maybe_put_game_achievements()
   end
 
-  def recent_games(_, _), do: []
+  def game_details(_, _), do: nil
+
+  @doc """
+  Lista jogos recentes com metricas para tabela.
+  """
+  def list_games(profile_id, limit \\ 10, opts \\ [])
+
+  def list_games(profile_id, limit, opts)
+      when is_integer(profile_id) and is_integer(limit) and is_list(opts) do
+    games_with_metrics(
+      profile_id,
+      limit: limit,
+      offset: Keyword.get(opts, :offset, 0),
+      sort_order: Keyword.get(opts, :sort_order, :desc),
+      search_query: Keyword.get(opts, :search_query, "")
+    )
+  end
+
+  def list_games(_, _, _), do: []
 
   @doc """
   Retorna cards de estatisticas gerais do perfil.
@@ -145,8 +165,40 @@ defmodule ProjetoPrisma.Accounts.ProfileDashboard do
     Map.put(game, :recent_achievements, achievements)
   end
 
+  defp maybe_put_game_achievements(nil), do: nil
+
+  defp maybe_put_game_achievements(game) do
+    achievements =
+      Achievement
+      |> where([a], a.platform_game_id == ^game.platform_game_id)
+      |> join(:left, [a], pa in ProfileAchievement,
+        on: pa.achievement_id == a.id and pa.profile_game_id == ^game.profile_game_id
+      )
+      |> order_by(
+        [a, pa],
+        desc: fragment("COALESCE(?, false)", pa.achieved),
+        desc_nulls_last: pa.unlock_time,
+        asc: a.name
+      )
+      |> select([a, pa], %{
+        name: a.name,
+        description: a.description,
+        icon_image: a.icon_image,
+        icon_locked_image: a.icon_locked_image,
+        achieved: type(fragment("COALESCE(?, false)", pa.achieved), :boolean),
+        unlock_time: pa.unlock_time
+      })
+      |> Repo.all()
+
+    Map.put(game, :achievements, achievements)
+  end
+
   defp games_with_metrics(profile_id, opts \\ []) do
     limit = Keyword.get(opts, :limit)
+    offset = Keyword.get(opts, :offset, 0)
+    sort_order = Keyword.get(opts, :sort_order, :desc)
+    profile_game_id = Keyword.get(opts, :profile_game_id)
+    search_query = normalize_search_query(Keyword.get(opts, :search_query, ""))
 
     base_query =
       ProfileGame
@@ -154,7 +206,9 @@ defmodule ProjetoPrisma.Accounts.ProfileDashboard do
       |> join(:inner, [pg], pgame in assoc(pg, :platform_game))
       |> join(:inner, [_pg, pgame], g in assoc(pgame, :game))
       |> join(:inner, [_pg, pgame, _g], p in assoc(pgame, :platform))
-      |> order_by([pg, _pgame, _g, _p], desc_nulls_last: pg.last_played, desc: pg.id)
+      |> maybe_filter_by_profile_game_id(profile_game_id)
+      |> maybe_filter_by_game_name(search_query)
+      |> sort_by_last_played(sort_order)
       |> select([pg, pgame, g, p], %{
         profile_game_id: pg.id,
         platform_game_id: pgame.id,
@@ -166,6 +220,7 @@ defmodule ProjetoPrisma.Accounts.ProfileDashboard do
         platform_name: p.name,
         platform_slug: p.slug
       })
+      |> maybe_offset(offset)
 
     base_games =
       if is_integer(limit) and limit > 0 do
@@ -199,6 +254,39 @@ defmodule ProjetoPrisma.Accounts.ProfileDashboard do
       |> Map.put(:last_unlock_time, Map.get(last_unlock_map, game.profile_game_id))
     end)
   end
+
+  defp maybe_offset(query, offset) when is_integer(offset) and offset > 0 do
+    offset(query, ^offset)
+  end
+
+  defp maybe_offset(query, _offset), do: query
+
+  defp maybe_filter_by_profile_game_id(query, profile_game_id) when is_integer(profile_game_id) do
+    where(query, [pg, _pgame, _g, _p], pg.id == ^profile_game_id)
+  end
+
+  defp maybe_filter_by_profile_game_id(query, _profile_game_id), do: query
+
+  defp maybe_filter_by_game_name(query, ""), do: query
+
+  defp maybe_filter_by_game_name(query, search_query) do
+    where(query, [_pg, _pgame, g, _p], ilike(g.name, ^"%#{search_query}%"))
+  end
+
+  defp sort_by_last_played(query, :asc) do
+    order_by(query, [pg, _pgame, _g, _p], asc_nulls_last: pg.last_played, asc: pg.id)
+  end
+
+  defp sort_by_last_played(query, _sort_order) do
+    order_by(query, [pg, _pgame, _g, _p], desc_nulls_last: pg.last_played, desc: pg.id)
+  end
+
+  defp normalize_search_query(search_query) when is_binary(search_query) do
+    search_query
+    |> String.trim()
+  end
+
+  defp normalize_search_query(_search_query), do: ""
 
   defp unlocked_counts_by_profile_game([]), do: %{}
 
