@@ -238,7 +238,7 @@ defmodule ProjetoPrismaWeb.RegisterFormLive do
               name="register[password]"
               id="password"
               class="form-input"
-              placeholder="••••••••"
+              placeholder="digite sua senha"
               value={@form[:password].value}
               required
               minlength="6"
@@ -267,7 +267,7 @@ defmodule ProjetoPrismaWeb.RegisterFormLive do
               name="register[confirm_password]"
               id="confirmPassword"
               class="form-input"
-              placeholder="••••••••"
+              placeholder="confirme sua senha"
               value={@form[:confirm_password].value}
               required
               minlength="6"
@@ -293,7 +293,7 @@ defmodule ProjetoPrismaWeb.RegisterFormLive do
       </.form>
 
       <div class="login-link">
-        Ja tem uma conta? <a href="/">Voltar para o Login</a>
+        Ja tem uma conta? <a href="/users/log-in">Voltar para o Login</a>
       </div>
     <% end %>
     """

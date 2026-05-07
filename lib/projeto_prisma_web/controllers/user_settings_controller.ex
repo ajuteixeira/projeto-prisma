@@ -4,9 +4,6 @@ defmodule ProjetoPrismaWeb.UserSettingsController do
   alias ProjetoPrisma.Accounts
   alias ProjetoPrismaWeb.UserAuth
 
-  import ProjetoPrismaWeb.UserAuth, only: [require_sudo_mode: 2]
-
-  plug :require_sudo_mode
   plug :assign_email_and_password_changesets when action in [:edit, :update]
 
   def edit(conn, _params) do
