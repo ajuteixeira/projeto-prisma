@@ -8,8 +8,8 @@ defmodule ProjetoPrisma.Sync.AdaptersTest do
       assert ProjetoPrisma.Sync.Psn.Adapter == Adapters.get_adapter(:playstation)
     end
 
-    test "does not return an undefined Xbox adapter" do
-      assert {:error, "Plataforma xbox não suportada"} = Adapters.get_adapter(:xbox)
+    test "returns the implemented Xbox adapter for xbox" do
+      assert ProjetoPrisma.Sync.Xbox.Adapter == Adapters.get_adapter(:xbox)
     end
   end
 end

@@ -22,7 +22,7 @@ defmodule ProjetoPrisma.Sync.Adapters do
   """
   def get_adapter(:steam), do: ProjetoPrisma.Sync.Steam.Adapter
   def get_adapter(:playstation), do: ProjetoPrisma.Sync.Psn.Adapter
-  def get_adapter(:xbox), do: {:error, "Plataforma xbox não suportada"}
+  def get_adapter(:xbox), do: ProjetoPrisma.Sync.Xbox.Adapter
   def get_adapter(:retroachievements), do: ProjetoPrisma.Sync.RetroAchievements.Adapter
 
   def get_adapter(platform) do

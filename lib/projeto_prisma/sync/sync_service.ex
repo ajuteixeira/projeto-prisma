@@ -32,7 +32,7 @@ defmodule ProjetoPrisma.Sync.SyncService do
     with :ok <- validate_profile(profile_id),
          {:ok, platform} <- get_platform(platform_slug),
          {:ok, adapter} <- get_adapter(platform_slug),
-         {:ok, _} <-
+         {:ok, ppa} <-
            create_profile_platform_account(profile_id, platform.id, external_user_id, api_key),
          {:ok, stats} <-
            sync_games_and_achievements(
@@ -41,7 +41,8 @@ defmodule ProjetoPrisma.Sync.SyncService do
              platform.slug,
              adapter,
              external_user_id,
-             api_key
+             api_key,
+             ppa.id
            ) do
       {:ok, stats}
     else
@@ -237,9 +238,14 @@ defmodule ProjetoPrisma.Sync.SyncService do
          platform_slug,
          adapter,
          external_user_id,
-         api_key
+         api_key,
+         account_id
        ) do
-    account = %{external_user_id: external_user_id, api_key: api_key}
+    account = %{
+      external_user_id: external_user_id,
+      api_key: api_key,
+      account_id: account_id
+    }
 
     # Tenta com backoff exponencial (1s, 2s, 4s)
     case retry_with_backoff(fn -> adapter.fetch_games(account) end, 3) do
@@ -334,7 +340,9 @@ defmodule ProjetoPrisma.Sync.SyncService do
              platform_game.id,
              %{
                "playtime_minutes" => game_value(game_data, :playtime_minutes) || 0,
-               "last_played" => DateTime.utc_now() |> DateTime.to_naive()
+               "last_played" =>
+                 game_value(game_data, :last_played) ||
+                   (DateTime.utc_now() |> DateTime.to_naive())
              }
            ) do
       achievements_count =
