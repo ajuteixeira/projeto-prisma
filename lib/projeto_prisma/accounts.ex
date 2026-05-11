@@ -425,6 +425,24 @@ defmodule ProjetoPrisma.Accounts do
   end
 
   @doc """
+  Atualiza credenciais de uma conta de plataforma por id.
+
+  Usado, por exemplo, quando o provedor (Microsoft) rotaciona o refresh token
+  durante uma sincronização.
+  """
+  def update_platform_credential(account_id, attrs) do
+    case Repo.get(ProfilePlatformAccount, account_id) do
+      nil ->
+        {:error, :not_found}
+
+      account ->
+        account
+        |> ProfilePlatformAccount.changeset(attrs)
+        |> Repo.update()
+    end
+  end
+
+  @doc """
   Marca o início de uma sincronização de uma conta de plataforma.
   """
   def mark_platform_sync_started(%ProfilePlatformAccount{} = account, step) do

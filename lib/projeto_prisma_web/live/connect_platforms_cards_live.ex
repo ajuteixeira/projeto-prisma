@@ -128,13 +128,47 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
     end
   end
 
+  def handle_event("platform_action", %{"platform" => "xbox"}, socket) do
+    platform = Enum.find(socket.assigns.platforms, &(&1.slug == "xbox"))
+
+    cond do
+      is_nil(platform) ->
+        {:noreply, put_flash(socket, :error, "Plataforma Xbox não encontrada na tela")}
+
+      platform.connected ->
+        disconnect_xbox(socket)
+
+      is_nil(socket.assigns.profile_id) ->
+        {:noreply, put_flash(socket, :error, "Não foi possível identificar o perfil atual")}
+
+      true ->
+        {:noreply, redirect(socket, to: ~p"/auth/xbox/start")}
+    end
+  end
+
   def handle_event("platform_action", %{"platform" => _platform_slug}, socket) do
     {:noreply,
      put_flash(
        socket,
        :info,
-       "A conexão desta plataforma será implementada por outro time. Por enquanto, somente Steam e Psn está ativa."
+       "A conexão desta plataforma será implementada por outro time."
      )}
+  end
+
+  defp disconnect_xbox(socket) do
+    case Accounts.disconnect_platform_account(socket.assigns.profile_id, "xbox") do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> refresh_platforms()
+         |> put_flash(:info, "Conta Xbox desvinculada")}
+
+      {:error, :platform_not_found} ->
+        {:noreply, put_flash(socket, :error, "Plataforma Xbox não cadastrada")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Não foi possível desvincular a conta Xbox")}
+    end
   end
 
   def handle_event("close_modal", _params, socket) do
@@ -770,6 +804,9 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
 
               platform.connected && platform.slug == "retroachievements" ->
                 "Deseja desvincular sua conta RetroAchievements?"
+
+              platform.connected && platform.slug == "xbox" ->
+                "Deseja desvincular sua conta Xbox?"
 
               true ->
                 nil
