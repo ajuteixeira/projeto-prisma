@@ -6,10 +6,6 @@ defmodule ProjetoPrismaWeb.PageController do
   alias ProjetoPrisma.Sync.SyncService
   alias ProjetoPrismaWeb.UserAuth
 
-  require Logger
-
-  @stale_sync_after_seconds 300
-
   def home(conn, _params) do
     render(conn, :home)
   end
@@ -21,6 +17,10 @@ defmodule ProjetoPrismaWeb.PageController do
   def profile(conn, _params) do
     conn = prepare_dashboard_sync(conn)
     render(conn, :profile)
+  end
+
+  def followers(conn, _params) do
+    render(conn, :followers)
   end
 
   def register(conn, _params) do
@@ -70,17 +70,7 @@ defmodule ProjetoPrismaWeb.PageController do
   defp maybe_start_dashboard_sync(conn, _profile_id, %{status: :failed}), do: conn
 
   defp maybe_start_dashboard_sync(conn, profile_id, %{status: :idle}) do
-    case Task.Supervisor.start_child(ProjetoPrisma.SyncTaskSupervisor, fn ->
-           SyncService.sync_connected_platforms(profile_id)
-         end) do
-      {:ok, pid} ->
-        Logger.info("Started dashboard sync for profile #{profile_id} in #{inspect(pid)}")
-
-      {:error, reason} ->
-        Logger.error(
-          "Could not start dashboard sync for profile #{profile_id}: #{inspect(reason)}"
-        )
-    end
+    _ = Task.start(fn -> SyncService.sync_connected_platforms(profile_id) end)
 
     assign(conn, :sync_popup, %{
       status: :running,
@@ -95,19 +85,17 @@ defmodule ProjetoPrismaWeb.PageController do
 
   defp dashboard_sync_popup(profile_id) do
     accounts = Accounts.list_connected_platform_accounts(profile_id)
-    {fresh_running_accounts, stale_running_accounts} = split_running_accounts(accounts)
+    running_accounts = Enum.filter(accounts, &(&1.sync_status == "running"))
     failed_accounts = Enum.filter(accounts, &(&1.sync_status == "failed"))
-    pending_accounts = Enum.filter(accounts, &pending_sync_account?/1)
-    syncable_count = length(pending_accounts) + length(stale_running_accounts)
 
     cond do
-      fresh_running_accounts != [] ->
+      running_accounts != [] ->
         %{
           status: :running,
           title: "Sincronização em andamento",
           message: "Estamos atualizando jogos e troféus agora.",
           progress: true,
-          count: length(fresh_running_accounts)
+          count: length(running_accounts)
         }
 
       failed_accounts != [] ->
@@ -119,36 +107,17 @@ defmodule ProjetoPrismaWeb.PageController do
           count: length(failed_accounts)
         }
 
-      syncable_count > 0 ->
+      accounts != [] ->
         %{
           status: :idle,
           title: "Sincronização iniciando",
           message: "Preparando atualização de jogos e troféus.",
           progress: true,
-          count: syncable_count
+          count: length(accounts)
         }
 
       true ->
         nil
-    end
-  end
-
-  defp pending_sync_account?(account), do: account.sync_status in [nil, "idle"]
-
-  defp split_running_accounts(accounts) do
-    accounts
-    |> Enum.filter(&(&1.sync_status == "running"))
-    |> Enum.split_with(&fresh_running_account?/1)
-  end
-
-  defp fresh_running_account?(account) do
-    case account.sync_started_at do
-      %NaiveDateTime{} = started_at ->
-        NaiveDateTime.diff(NaiveDateTime.utc_now(), started_at, :second) <
-          @stale_sync_after_seconds
-
-      _ ->
-        false
     end
   end
 
@@ -167,4 +136,5 @@ defmodule ProjetoPrismaWeb.PageController do
         end
     end
   end
+
 end

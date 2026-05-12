@@ -28,6 +28,7 @@ defmodule ProjetoPrismaWeb.Router do
 
     get "/", PageController, :profile
     get "/connect-platforms", PageController, :connect_platforms
+    get "/followers", PageController, :followers
 
     get "/auth/xbox/start", XboxOAuthController, :start
     get "/auth/xbox/callback", XboxOAuthController, :callback

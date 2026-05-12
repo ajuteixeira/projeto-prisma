@@ -12,6 +12,7 @@ defmodule ProjetoPrisma.Accounts do
   alias ProjetoPrisma.Accounts.{
     User,
     Profile,
+    ProfileFollow,
     ProfilePlatformAccount,
     ProfileGame,
     ProfileAchievement,
@@ -176,6 +177,179 @@ defmodule ProjetoPrisma.Accounts do
   end
 
   def get_profile_with_user(_scope), do: nil
+
+  @doc """
+  Lista os seguidores de um profile.
+  """
+  def list_followers(profile_id) when is_integer(profile_id) do
+    ProfileFollow
+    |> where([pf], pf.followed_profile_id == ^profile_id)
+    |> join(:inner, [pf], p in Profile, on: p.id == pf.follower_profile_id)
+    |> select([_pf, p], p)
+    |> order_by([pf], desc: pf.inserted_at)
+    |> Repo.all()
+    |> Repo.preload([:user, :avatar])
+  end
+
+  def list_followers(_profile_id), do: []
+
+  @doc """
+  Lista quem o profile esta seguindo.
+  """
+  def list_following(profile_id) when is_integer(profile_id) do
+    ProfileFollow
+    |> where([pf], pf.follower_profile_id == ^profile_id)
+    |> join(:inner, [pf], p in Profile, on: p.id == pf.followed_profile_id)
+    |> select([_pf, p], p)
+    |> order_by([pf], desc: pf.inserted_at)
+    |> Repo.all()
+    |> Repo.preload([:user, :avatar])
+  end
+
+  def list_following(_profile_id), do: []
+
+  @doc """
+  Lista apenas os IDs seguidos por um profile.
+  """
+  def list_following_ids(profile_id) when is_integer(profile_id) do
+    ProfileFollow
+    |> where([pf], pf.follower_profile_id == ^profile_id)
+    |> select([pf], pf.followed_profile_id)
+    |> Repo.all()
+  end
+
+  def list_following_ids(_profile_id), do: []
+
+  @doc """
+  Conta seguidores de um profile.
+  """
+  def count_profile_followers(profile_id) when is_integer(profile_id) do
+    ProfileFollow
+    |> where([pf], pf.followed_profile_id == ^profile_id)
+    |> Repo.aggregate(:count, :id)
+  end
+
+  def count_profile_followers(_profile_id), do: 0
+
+  @doc """
+  Conta quem o profile esta seguindo.
+  """
+  def count_profile_following(profile_id) when is_integer(profile_id) do
+    ProfileFollow
+    |> where([pf], pf.follower_profile_id == ^profile_id)
+    |> Repo.aggregate(:count, :id)
+  end
+
+  def count_profile_following(_profile_id), do: 0
+
+  @doc """
+  Busca perfis por username (apenas username), excluindo o profile atual.
+  """
+  def search_profiles_by_username(profile_id, query, opts \\ [])
+
+  def search_profiles_by_username(profile_id, query, opts) when is_integer(profile_id) do
+    search = normalize_search(query)
+
+    if search == "" do
+      []
+    else
+      pattern = "%#{search}%"
+      limit = option_value(opts, :limit, 24)
+
+      Profile
+      |> where([p], p.id != ^profile_id)
+      |> where([p], ilike(p.username, ^pattern))
+      |> preload([:user, :avatar])
+      |> order_by([p], asc: p.username)
+      |> limit(^limit)
+      |> Repo.all()
+    end
+  end
+
+  def search_profiles_by_username(_profile_id, _query, _opts), do: []
+
+  @doc """
+  Verifica se um profile segue outro.
+  """
+  def following?(follower_profile_id, followed_profile_id)
+      when is_integer(follower_profile_id) and is_integer(followed_profile_id) do
+    ProfileFollow
+    |> where(
+      [pf],
+      pf.follower_profile_id == ^follower_profile_id and
+        pf.followed_profile_id == ^followed_profile_id
+    )
+    |> Repo.exists?()
+  end
+
+  def following?(_follower_profile_id, _followed_profile_id), do: false
+
+  @doc """
+  Segue um profile.
+  """
+  def follow_profile(follower_profile_id, followed_profile_id)
+      when is_integer(follower_profile_id) and is_integer(followed_profile_id) do
+    cond do
+      follower_profile_id == followed_profile_id ->
+        {:error, :cannot_follow_self}
+
+      true ->
+        %ProfileFollow{}
+        |> ProfileFollow.changeset(%{
+          follower_profile_id: follower_profile_id,
+          followed_profile_id: followed_profile_id
+        })
+        |> Repo.insert(
+          on_conflict: :nothing,
+          conflict_target: [:follower_profile_id, :followed_profile_id]
+        )
+        |> case do
+          {:ok, _follow} -> :ok
+          {:error, changeset} -> {:error, changeset}
+        end
+    end
+  end
+
+  def follow_profile(_follower_profile_id, _followed_profile_id),
+    do: {:error, :invalid_profile}
+
+  @doc """
+  Deixa de seguir um profile.
+  """
+  def unfollow_profile(follower_profile_id, followed_profile_id)
+      when is_integer(follower_profile_id) and is_integer(followed_profile_id) do
+    ProfileFollow
+    |> where(
+      [pf],
+      pf.follower_profile_id == ^follower_profile_id and
+        pf.followed_profile_id == ^followed_profile_id
+    )
+    |> Repo.delete_all()
+
+    :ok
+  end
+
+  def unfollow_profile(_follower_profile_id, _followed_profile_id),
+    do: {:error, :invalid_profile}
+
+  @doc """
+  Alterna follow/unfollow e retorna o novo estado.
+  """
+  def toggle_follow(follower_profile_id, followed_profile_id)
+      when is_integer(follower_profile_id) and is_integer(followed_profile_id) do
+    if following?(follower_profile_id, followed_profile_id) do
+      with :ok <- unfollow_profile(follower_profile_id, followed_profile_id) do
+        {:ok, :unfollowed}
+      end
+    else
+      with :ok <- follow_profile(follower_profile_id, followed_profile_id) do
+        {:ok, :followed}
+      end
+    end
+  end
+
+  def toggle_follow(_follower_profile_id, _followed_profile_id),
+    do: {:error, :invalid_profile}
 
   @doc """
   Retorna um changeset para alterar o profile.
