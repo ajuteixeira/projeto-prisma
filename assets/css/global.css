@@ -33,17 +33,6 @@ body {
   overflow-x: hidden;
 }
 
-body::before {
-  content: "";
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(10, 14, 20, 0.75);
-  z-index: 0;
-  pointer-events: none;
-}
 
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 

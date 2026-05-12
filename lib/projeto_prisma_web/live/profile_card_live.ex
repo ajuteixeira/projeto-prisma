@@ -12,6 +12,16 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
     current_scope = resolve_current_scope(session)
     profile = Accounts.get_profile_with_user(current_scope)
 
+    {followers_count, following_count} =
+      if profile do
+        {
+          Accounts.count_profile_followers(profile.id),
+          Accounts.count_profile_following(profile.id)
+        }
+      else
+        {0, 0}
+      end
+
     # Get full_name from the user associated with the profile
     full_name = get_user_full_name(profile)
     pinned_achievements = safe_list_pinned(current_scope)
@@ -21,6 +31,8 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
      |> assign(:current_scope, current_scope)
      |> assign(:profile, profile)
      |> assign(:profile_missing, is_nil(profile))
+    |> assign(:followers_count, followers_count)
+    |> assign(:following_count, following_count)
      |> assign(:modal_open, false)
      |> assign(:modal_error, nil)
      |> assign(:full_name, full_name)
@@ -378,8 +390,12 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
             <h2 class="text-2xl font-bold" id="profile-username">@{profile_username(@profile)}</h2>
           </div>
           <div class="profile-stats flex items-center space-x-3 text-xs text-gray-400">
-            <span><strong class="text-white" id="followers-count">0</strong> Seguidores</span>
-            <span><strong class="text-white" id="following-count">0</strong> Seguindo</span>
+            <span>
+              <strong class="text-white" id="followers-count">{@followers_count}</strong> Seguidores
+            </span>
+            <span>
+              <strong class="text-white" id="following-count">{@following_count}</strong> Seguindo
+            </span>
           </div>
         </div>
       </div>

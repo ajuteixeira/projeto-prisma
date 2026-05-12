@@ -1,0 +1,270 @@
+/* Followers/Following Page Styles */
+
+.followers-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.followers-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  color: #60a5fa;
+}
+
+.followers-header i {
+  font-size: 32px;
+}
+
+.followers-header h1 {
+  font-size: 32px;
+  font-weight: 700;
+}
+
+/* Tabs */
+.followers-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.followers-tab {
+  flex: 1;
+  padding: 12px 24px;
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  text-align: center;
+}
+
+.followers-tab:hover {
+  color: #60a5fa;
+}
+
+.followers-tab.active {
+  color: #60a5fa;
+  border-bottom-color: #60a5fa;
+}
+
+/* Tab Content */
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Search Box */
+.search-box {
+  margin-bottom: 24px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(30, 35, 45, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+}
+
+.search-input::placeholder {
+  color: #6b7280;
+}
+
+/* Followers Grid */
+.followers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Follower Card */
+.follower-card {
+  background: rgba(30, 35, 45, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.follower-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(102, 192, 244, 0.1),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.follower-card:hover::after {
+  left: 100%;
+}
+
+.follower-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(96, 165, 250, 0.3);
+  box-shadow: 0 8px 24px rgba(96, 165, 250, 0.15);
+}
+
+.follower-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  margin: 0 auto 12px;
+  border: 2px solid rgba(96, 165, 250, 0.3);
+  object-fit: cover;
+}
+
+.follower-name {
+  font-weight: 600;
+  color: #f3f4f6;
+  margin-bottom: 4px;
+}
+
+.follower-username {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 12px;
+}
+
+/* Follow Button */
+.btn-follow {
+  width: 100%;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid #60a5fa;
+  background: transparent;
+  color: #60a5fa;
+}
+
+.btn-follow:hover {
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.btn-follow.following {
+  background: rgba(96, 165, 250, 0.2);
+  border-color: #60a5fa;
+}
+
+.btn-follow.following::after {
+  content: "Seguindo";
+}
+
+.btn-follow.following:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.btn-follow.following:hover::after {
+  content: "Deixar de Seguir";
+}
+
+.btn-follow.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .followers-page {
+    padding: 16px;
+    max-width: 100%;
+  }
+
+  .followers-header {
+    margin-bottom: 20px;
+  }
+
+  .followers-header i {
+    font-size: 24px;
+  }
+
+  .followers-header h1 {
+    font-size: 24px;
+  }
+
+  .followers-tabs {
+    gap: 6px;
+    margin-bottom: 20px;
+  }
+
+  .followers-tab {
+    padding: 10px 12px;
+    font-size: 14px;
+    flex: 1;
+    text-align: center;
+  }
+
+  .followers-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  .follower-card {
+    padding: 16px;
+  }
+
+  .follower-avatar {
+    width: 60px;
+    height: 60px;
+  }
+
+  .follower-name {
+    font-size: 14px;
+  }
+
+  .follower-username {
+    font-size: 11px;
+  }
+}

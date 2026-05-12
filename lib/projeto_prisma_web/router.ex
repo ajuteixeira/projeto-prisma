@@ -57,6 +57,7 @@ defmodule ProjetoPrismaWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     get "/", PageController, :profile
+    get "/followers", PageController, :followers
     get "/auth/xbox/start", XboxOAuthController, :start
     get "/auth/xbox/callback", XboxOAuthController, :callback
     get "/connect-platforms", PageController, :connect_platforms
