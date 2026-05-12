@@ -23,29 +23,6 @@ defmodule ProjetoPrismaWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/", ProjetoPrismaWeb do
-    pipe_through [:browser, :require_authenticated_user]
-
-    get "/", PageController, :profile
-    get "/connect-platforms", PageController, :connect_platforms
-    get "/followers", PageController, :followers
-
-    get "/auth/xbox/start", XboxOAuthController, :start
-    get "/auth/xbox/callback", XboxOAuthController, :callback
-  end
-
-  scope "/", ProjetoPrismaWeb do
-    pipe_through [:browser, :redirect_if_user_is_authenticated]
-
-    get "/register", PageController, :register
-    post "/complete-registration", PageController, :complete_registration
-    post "/register", PageController, :create_profile
-    get "/reset-password", UserResetPasswordController, :new
-    post "/reset-password", UserResetPasswordController, :create
-    get "/reset-password/:token", UserResetPasswordController, :edit
-    put "/reset-password/:token", UserResetPasswordController, :update
-  end
-
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:projeto_prisma, :dev_routes) do
     import Phoenix.LiveDashboard.Router
@@ -63,31 +40,31 @@ defmodule ProjetoPrismaWeb.Router do
   scope "/", ProjetoPrismaWeb do
     pipe_through [:browser, :redirect_if_user_is_authenticated]
 
+    post "/complete-registration", PageController, :complete_registration
+    get "/reset-password", UserResetPasswordController, :new
+    post "/reset-password", UserResetPasswordController, :create
+    get "/reset-password/:token", UserResetPasswordController, :edit
+    put "/reset-password/:token", UserResetPasswordController, :update
+
     get "/users/register", UserRegistrationController, :new
     post "/users/register", UserRegistrationController, :create
+    get "/users/log-in", UserSessionController, :new
+    get "/users/log-in/:token", UserSessionController, :confirm
+    post "/users/log-in", UserSessionController, :create
   end
 
   scope "/", ProjetoPrismaWeb do
     pipe_through [:browser, :require_authenticated_user]
 
+    get "/", PageController, :profile
+    get "/followers", PageController, :followers
+    get "/auth/xbox/start", XboxOAuthController, :start
+    get "/auth/xbox/callback", XboxOAuthController, :callback
+    get "/connect-platforms", PageController, :connect_platforms
     get "/users/settings", UserSettingsController, :edit
     put "/users/settings", UserSettingsController, :update
     delete "/users/settings", UserSettingsController, :delete
     get "/users/settings/confirm-email/:token", UserSettingsController, :confirm_email
-  end
-
-  scope "/", ProjetoPrismaWeb do
-    pipe_through [:browser]
-
-    get "/log-in", UserSessionController, :new
-    get "/log-in/:token", UserSessionController, :confirm
-    post "/log-in", UserSessionController, :create
-    get "/log-out", UserSessionController, :delete
-    delete "/log-out", UserSessionController, :delete
-
-    get "/users/log-in", UserSessionController, :new
-    get "/users/log-in/:token", UserSessionController, :confirm
-    post "/users/log-in", UserSessionController, :create
     get "/users/log-out", UserSessionController, :delete
     delete "/users/log-out", UserSessionController, :delete
   end
