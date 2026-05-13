@@ -19,7 +19,7 @@ defmodule ProjetoPrisma.Accounts do
     Scope
   }
 
-  alias ProjetoPrisma.Catalog.{Achievement, Platform}
+  alias ProjetoPrisma.Catalog.{Achievement, Platform, PlatformGame}
 
   @doc """
   Registra um novo usuário com senha hasheada.
@@ -854,6 +854,70 @@ defmodule ProjetoPrisma.Accounts do
       games: games
     }
   end
+
+  @doc """
+  Retorna o ranking de jogadores para um perfil: o próprio usuário e as pessoas que ele segue,
+  ordenados por total de conquistas desbloqueadas (decrescente).
+
+  Cada entrada retorna:
+    - profile: %Profile{} com user e avatar precarregados
+    - achievement_count: total de conquistas desbloqueadas
+    - platform_slugs: lista de slugs das plataformas conectadas (ex: ["psn", "steam"])
+    - is_current_user: true se for o próprio usuário logado
+  """
+  def ranking_for_profile(profile_id) when is_integer(profile_id) do
+    followed_ids = list_following_ids(profile_id)
+    all_profile_ids = [profile_id | followed_ids]
+
+    raw_counts =
+      (from pa in ProfileAchievement,
+        join: pg in ProfileGame, on: pg.id == pa.profile_game_id,
+        join: ppg in PlatformGame, on: ppg.id == pg.platform_game_id,
+        join: plat in Platform, on: plat.id == ppg.platform_id,
+        where: pg.profile_id in ^all_profile_ids and pa.achieved == true,
+        group_by: [pg.profile_id, plat.slug],
+        select: {pg.profile_id, plat.slug, count(pa.id)})
+      |> Repo.all()
+
+    counts_by_profile =
+      Enum.reduce(raw_counts, %{}, fn {pid, _slug, cnt}, acc ->
+        Map.update(acc, pid, cnt, &(&1 + cnt))
+      end)
+
+    platform_counts_by_profile =
+      Enum.reduce(raw_counts, %{}, fn {pid, slug, cnt}, acc ->
+        Map.update(acc, pid, %{slug => cnt}, &Map.put(&1, slug, cnt))
+      end)
+
+    platforms_by_profile =
+      (from ppa in ProfilePlatformAccount,
+        join: plat in Platform,
+        on: plat.id == ppa.platform_id,
+        where: ppa.profile_id in ^all_profile_ids,
+        select: {ppa.profile_id, plat.slug})
+      |> Repo.all()
+      |> Enum.group_by(fn {pid, _slug} -> pid end, fn {_pid, slug} -> slug end)
+
+    profiles =
+      Profile
+      |> where([p], p.id in ^all_profile_ids)
+      |> preload([:user, :avatar])
+      |> Repo.all()
+
+    profiles
+    |> Enum.map(fn profile ->
+      %{
+        profile: profile,
+        achievement_count: Map.get(counts_by_profile, profile.id, 0),
+        platform_counts: Map.get(platform_counts_by_profile, profile.id, %{}),
+        platform_slugs: Map.get(platforms_by_profile, profile.id, []),
+        is_current_user: profile.id == profile_id
+      }
+    end)
+    |> Enum.sort_by(& &1.achievement_count, :desc)
+  end
+
+  def ranking_for_profile(_profile_id), do: []
 
   defp profile_achievement_display_query(user_id) do
     ProfileAchievement

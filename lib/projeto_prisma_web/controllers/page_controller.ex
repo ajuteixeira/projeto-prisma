@@ -23,6 +23,10 @@ defmodule ProjetoPrismaWeb.PageController do
     render(conn, :followers)
   end
 
+  def ranking(conn, _params) do
+    render(conn, :ranking)
+  end
+
   def register(conn, _params) do
     redirect(conn, to: ~p"/users/register")
   end
