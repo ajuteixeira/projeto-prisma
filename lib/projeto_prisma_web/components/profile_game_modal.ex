@@ -20,9 +20,12 @@ defmodule ProjetoPrismaWeb.ProfileGameModal do
       >
       </button>
 
-      <div class="relative z-10 max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-[30px] border border-gray-700 bg-[#0f172a] shadow-2xl">
+      <div
+        class="relative z-10 max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-[30px]"
+        style="background: rgba(30, 35, 45, 0.97); border: 1px solid rgba(96, 165, 250, 0.3); box-shadow: 0 0 40px rgba(96, 165, 250, 0.08), 0 25px 60px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.08);"
+      >
         <div
-          class="relative h-56 border-b border-gray-700 bg-cover bg-center"
+          class="relative h-56 border-b border-[rgba(96,165,250,0.2)] bg-cover bg-center"
           style={"background-image: linear-gradient(to bottom, rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.96)), url('#{cover_image(@game)}');"}
         >
           <div class="absolute inset-0 bg-gradient-to-tr from-slate-950/80 via-transparent to-emerald-500/10">
@@ -67,32 +70,32 @@ defmodule ProjetoPrismaWeb.ProfileGameModal do
 
         <div class="max-h-[calc(90vh-14rem)] p-6 sm:p-8">
           <div class="mt-6 grid gap-4 lg:grid-cols-2">
-            <div class="rounded-3xl border border-gray-700 bg-slate-900/60 p-5">
+            <div class="rounded-2xl p-5" style="background: rgba(96, 165, 250, 0.06); border: 1px solid rgba(96, 165, 250, 0.18);">
               <h4 class="text-lg font-semibold text-white">Informações do Jogo</h4>
               <div class="mt-4 space-y-3 text-sm">
-                <div class="flex items-start justify-between gap-4 border-b border-gray-800 pb-3">
+                <div class="flex items-start justify-between gap-4 border-b border-[rgba(255,255,255,0.06)] pb-3">
                   <span class="text-gray-400">Nome</span>
                   <span class="text-right font-medium text-white">{@game.game_name}</span>
                 </div>
-                <div class="flex items-start justify-between gap-4 border-b border-gray-800 pb-3">
+                <div class="flex items-start justify-between gap-4 border-b border-[rgba(255,255,255,0.06)] pb-3">
                   <span class="text-gray-400">Plataforma</span>
                   <span class="text-right font-medium text-white">
                     {@game.platform_name}
                   </span>
                 </div>
-                <div class="flex items-start justify-between gap-4 border-b border-gray-800 pb-3">
+                <div class="flex items-start justify-between gap-4 border-b border-[rgba(255,255,255,0.06)] pb-3">
                   <span class="text-gray-400">Tempo de jogo</span>
                   <span class="text-right font-medium text-white">
                     {format_playtime(@game.playtime_minutes)}
                   </span>
                 </div>
-                <div class="flex items-start justify-between gap-4 border-b border-gray-800 pb-3">
+                <div class="flex items-start justify-between gap-4 border-b border-[rgba(255,255,255,0.06)] pb-3">
                   <span class="text-gray-400">Última vez jogado</span>
                   <span class="text-right font-medium text-white">
                     {format_datetime(@game.last_played)}
                   </span>
                 </div>
-                <div class="flex items-start justify-between gap-4 border-b border-gray-800 pb-3">
+                <div class="flex items-start justify-between gap-4 border-b border-[rgba(255,255,255,0.06)] pb-3">
                   <span class="text-gray-400">Último desbloqueio</span>
                   <span class="text-right font-medium text-white">
                     {format_datetime(@game.last_unlock_time)}
@@ -102,7 +105,7 @@ defmodule ProjetoPrismaWeb.ProfileGameModal do
               </div>
             </div>
 
-            <div class="rounded-3xl border border-gray-700 bg-slate-900/60 p-5">
+            <div class="rounded-2xl p-5" style="background: rgba(96, 165, 250, 0.06); border: 1px solid rgba(96, 165, 250, 0.18);">
               <div class="flex items-center justify-between gap-4">
                 <div>
                   <h4 class="text-lg font-semibold text-white">Conquistas</h4>
@@ -128,7 +131,7 @@ defmodule ProjetoPrismaWeb.ProfileGameModal do
                   class={[
                     "flex gap-4 rounded-2xl border p-3 transition",
                     achievement.achieved && "border-emerald-500/20 bg-emerald-500/10",
-                    !achievement.achieved && "border-gray-700 bg-slate-950/60"
+                    !achievement.achieved && "border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.25)]"
                   ]}
                 >
                   <div class="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-gray-800">

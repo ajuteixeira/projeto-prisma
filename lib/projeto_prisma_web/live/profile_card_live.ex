@@ -47,6 +47,8 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
      |> assign(:achievements_page, 1)
      |> assign(:has_next_achievements_page?, false)
      |> assign(:has_previous_achievements_page?, false)
+     |> assign(:trophy_detail_modal_open, false)
+     |> assign(:selected_trophy, nil)
      |> allow_upload(:avatar,
        accept: ~w(.jpg .jpeg .png .gif .webp),
        max_entries: 1,
@@ -274,6 +276,23 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
      |> assign(:achievements_modal_error, error)}
   end
 
+  def handle_event("open_trophy_detail", %{"id" => raw_id}, socket) do
+    id = parse_int(raw_id)
+    trophy = Enum.find(socket.assigns.pinned_achievements, &(&1.id == id))
+
+    {:noreply,
+     socket
+     |> assign(:trophy_detail_modal_open, true)
+     |> assign(:selected_trophy, trophy)}
+  end
+
+  def handle_event("close_trophy_detail", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:trophy_detail_modal_open, false)
+     |> assign(:selected_trophy, nil)}
+  end
+
   def handle_event("save_pinned_achievements", _params, socket) do
     scope = socket.assigns.current_scope
     ids = socket.assigns.selected_achievement_ids
@@ -460,7 +479,13 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
           <div class="pinned-grid" id="pinned-grid">
             <%= for achievement <- pinned_with_padding(@pinned_achievements) do %>
               <%= if achievement do %>
-                <div class="pinned-achievement" title={achievement_tooltip(achievement)}>
+                <div
+                  class="pinned-achievement"
+                  title={achievement_tooltip(achievement)}
+                  phx-click="open_trophy_detail"
+                  phx-value-id={achievement.id}
+                  style="cursor: pointer;"
+                >
                   <%= if has_icon_image?(achievement) do %>
                     <img
                       src={achievement.icon}
@@ -805,6 +830,78 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
         </div>
       </div>
     </div>
+
+    <!-- Trophy Detail Modal -->
+    <div
+      :if={@trophy_detail_modal_open and not is_nil(@selected_trophy)}
+      id="trophy-detail-modal"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50"
+      phx-window-keydown="close_trophy_detail"
+      phx-key="escape"
+    >
+      <div
+        class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border border-gray-700/50"
+        phx-click-away="close_trophy_detail"
+      >
+        <div class="flex justify-between items-start mb-6">
+          <h2 class="text-xl font-bold text-white">Detalhes da Conquista</h2>
+          <button
+            type="button"
+            phx-click="close_trophy_detail"
+            class="text-gray-400 hover:text-white transition-colors ml-4 shrink-0"
+          >
+            <i class="fas fa-times text-xl"></i>
+          </button>
+        </div>
+
+        <div class="flex flex-col items-center text-center">
+          <div class="mb-4">
+            <%= if has_icon_image?(@selected_trophy) do %>
+              <img
+                src={@selected_trophy.icon}
+                alt={@selected_trophy.name || "Conquista"}
+                class="w-24 h-24 rounded-xl object-cover shadow-lg"
+              />
+            <% else %>
+              <div class="w-24 h-24 rounded-xl bg-gray-700 flex items-center justify-center text-5xl shadow-lg">
+                🏆
+              </div>
+            <% end %>
+          </div>
+
+          <h3 class="text-lg font-bold text-white mb-1">{@selected_trophy.name || "Conquista"}</h3>
+
+          <span
+            :if={achievement_game(@selected_trophy) != ""}
+            class="inline-block px-3 py-1 bg-blue-500/20 border border-blue-500/30 text-blue-300 text-xs rounded-full mb-4"
+          >
+            {achievement_game(@selected_trophy)}
+          </span>
+
+          <p
+            :if={not is_nil(@selected_trophy.description) and @selected_trophy.description != ""}
+            class="text-gray-300 text-sm leading-relaxed mb-4"
+          >
+            {@selected_trophy.description}
+          </p>
+
+          <div class="flex items-center gap-2 text-gray-500 text-xs">
+            <i class="fas fa-calendar-check"></i>
+            <span>{format_unlock_time(@selected_trophy.unlock_time)}</span>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <button
+            type="button"
+            phx-click="close_trophy_detail"
+            class="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-all duration-300"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
     """
   end
 
@@ -830,6 +927,14 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
 
   defp achievement_game(%{game_name: name}) when is_binary(name), do: String.trim(name)
   defp achievement_game(_), do: ""
+
+  defp format_unlock_time(nil), do: "Data desconhecida"
+
+  defp format_unlock_time(%NaiveDateTime{} = dt) do
+    "Desbloqueada em #{dt.day}/#{dt.month}/#{dt.year}"
+  end
+
+  defp format_unlock_time(_), do: "Data desconhecida"
 
   defp error_to_string(:too_large), do: "Arquivo muito grande. Maximo 2MB."
 
