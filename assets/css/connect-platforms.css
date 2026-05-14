@@ -261,6 +261,29 @@
   border-left: 3px solid #3b82f6;
 }
 
+.connect-modal-error {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-left: 3px solid #ef4444;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.connect-modal-error::before {
+  content: "⚠";
+  color: #ef4444;
+  font-size: 16px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
 .connect-modal-input {
   width: 100%;
   background: #0f1419;
