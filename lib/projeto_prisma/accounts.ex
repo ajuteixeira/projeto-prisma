@@ -741,12 +741,16 @@ defmodule ProjetoPrisma.Accounts do
 
   def list_achieved_achievements(%Scope{user: %User{id: user_id}}, opts) do
     search = opts |> option_value(:search, "") |> normalize_search()
+    limit = option_value(opts, :limit, nil)
+    offset = option_value(opts, :offset, 0)
 
     user_id
     |> profile_achievement_display_query()
     |> where([pa, _pg, _profile, _achievement, _platform_game, _game], pa.achieved == true)
     |> maybe_filter_achievement_search(search)
     |> order_achievement_display_query()
+    |> maybe_limit(limit)
+    |> maybe_offset(offset)
     |> Repo.all()
   end
 
@@ -965,9 +969,9 @@ defmodule ProjetoPrisma.Accounts do
   defp order_achievement_display_query(query) do
     order_by(
       query,
-      [pa, _pg, _profile, _achievement, _platform_game, _game],
-      asc_nulls_last: pa.pinned_position,
-      desc_nulls_last: pa.unlock_time,
+      [pa, _pg, _profile, achievement, _platform_game, game],
+      asc: fragment("LOWER(?)", game.name),
+      asc: fragment("LOWER(?)", achievement.name),
       asc: pa.id
     )
   end
@@ -1054,6 +1058,13 @@ defmodule ProjetoPrisma.Accounts do
   end
 
   defp option_value(_opts, _key, default), do: default
+
+  defp maybe_limit(query, nil), do: query
+  defp maybe_limit(query, n) when is_integer(n) and n > 0, do: limit(query, ^n)
+
+  defp maybe_offset(query, nil), do: query
+  defp maybe_offset(query, 0), do: query
+  defp maybe_offset(query, n) when is_integer(n) and n > 0, do: offset(query, ^n)
 
   defp normalize_search(nil), do: ""
 

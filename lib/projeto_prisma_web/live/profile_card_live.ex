@@ -6,6 +6,7 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
 
   @max_pins 4
   @bio_max 90
+  @achievements_page_size 24
 
   @impl true
   def mount(_params, session, socket) do
@@ -43,6 +44,9 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
      |> assign(:available_achievements, [])
      |> assign(:selected_achievement_ids, [])
      |> assign(:achievements_modal_error, nil)
+     |> assign(:achievements_page, 1)
+     |> assign(:has_next_achievements_page?, false)
+     |> assign(:has_previous_achievements_page?, false)
      |> allow_upload(:avatar,
        accept: ~w(.jpg .jpeg .png .gif .webp),
        max_entries: 1,
@@ -207,7 +211,6 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
 
   def handle_event("open_achievements_modal", _params, socket) do
     scope = socket.assigns.current_scope
-    available = safe_list_available(scope, "")
     pinned = safe_list_pinned(scope)
     selected_ids = Enum.map(pinned, & &1.id)
 
@@ -215,9 +218,9 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
      socket
      |> assign(:achievements_modal_open, true)
      |> assign(:achievement_search, "")
-     |> assign(:available_achievements, available)
      |> assign(:selected_achievement_ids, selected_ids)
-     |> assign(:achievements_modal_error, nil)}
+     |> assign(:achievements_modal_error, nil)
+     |> load_achievements_page(1, "")}
   end
 
   def handle_event("close_achievements_modal", _params, socket) do
@@ -233,12 +236,20 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
       |> Map.get("achievement_search", params["value"] || "")
       |> to_string()
 
-    available = safe_list_available(socket.assigns.current_scope, query)
-
     {:noreply,
      socket
      |> assign(:achievement_search, query)
-     |> assign(:available_achievements, available)}
+     |> load_achievements_page(1, query)}
+  end
+
+  def handle_event("next_page_achievements", _params, socket) do
+    page = socket.assigns.achievements_page + 1
+    {:noreply, load_achievements_page(socket, page, socket.assigns.achievement_search)}
+  end
+
+  def handle_event("previous_page_achievements", _params, socket) do
+    page = max(1, socket.assigns.achievements_page - 1)
+    {:noreply, load_achievements_page(socket, page, socket.assigns.achievement_search)}
   end
 
   def handle_event("toggle_pinned_achievement", %{"id" => raw_id}, socket) do
@@ -338,19 +349,45 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
     end
   end
 
-  defp safe_list_available(nil, _query), do: []
+  defp safe_list_available(nil, _query, _opts), do: []
 
-  defp safe_list_available(scope, query) do
+  defp safe_list_available(scope, query, opts) do
     if function_exported?(Accounts, :list_achieved_achievements, 2) do
       try do
-        opts = if to_string(query) == "", do: [], else: [search: to_string(query)]
-        Accounts.list_achieved_achievements(scope, opts) || []
+        base = if to_string(query) == "", do: [], else: [search: to_string(query)]
+        Accounts.list_achieved_achievements(scope, base ++ opts) || []
       rescue
         _ -> []
       end
     else
       []
     end
+  end
+
+  defp load_achievements_page(socket, page, search) do
+    page = max(page, 1)
+    offset = (page - 1) * @achievements_page_size
+
+    rows =
+      safe_list_available(socket.assigns.current_scope, search,
+        limit: @achievements_page_size + 1,
+        offset: offset
+      )
+
+    {entries, has_next?} =
+      case rows do
+        rows when length(rows) > @achievements_page_size ->
+          {Enum.take(rows, @achievements_page_size), true}
+
+        rows ->
+          {rows, false}
+      end
+
+    socket
+    |> assign(:available_achievements, entries)
+    |> assign(:achievements_page, page)
+    |> assign(:has_next_achievements_page?, has_next?)
+    |> assign(:has_previous_achievements_page?, page > 1)
   end
 
   defp parse_int(v) when is_integer(v), do: v
@@ -706,6 +743,46 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
                 </div>
               </div>
             <% end %>
+          </div>
+
+          <div
+            id="manage-achievements-pagination"
+            class="mt-4 flex flex-col gap-3 border-t border-gray-700/80 pt-4 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <span class="text-xs text-gray-400">Página {@achievements_page}</span>
+            <div class="flex items-center justify-end gap-2">
+              <button
+                id="manage-achievements-previous-page"
+                type="button"
+                phx-click="previous_page_achievements"
+                disabled={!@has_previous_achievements_page?}
+                class={[
+                  "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition",
+                  @has_previous_achievements_page? &&
+                    "border-gray-600 bg-gray-800/80 text-white hover:border-gray-500 hover:bg-gray-700/80",
+                  !@has_previous_achievements_page? &&
+                    "cursor-not-allowed border-gray-800 bg-gray-900/70 text-gray-500"
+                ]}
+              >
+                <.icon name="hero-chevron-left" class="size-4" /> Anterior
+              </button>
+
+              <button
+                id="manage-achievements-next-page"
+                type="button"
+                phx-click="next_page_achievements"
+                disabled={!@has_next_achievements_page?}
+                class={[
+                  "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition",
+                  @has_next_achievements_page? &&
+                    "border-emerald-500/40 bg-emerald-500/10 text-emerald-100 hover:border-emerald-400/70 hover:bg-emerald-500/15",
+                  !@has_next_achievements_page? &&
+                    "cursor-not-allowed border-gray-800 bg-gray-900/70 text-gray-500"
+                ]}
+              >
+                Próxima <.icon name="hero-chevron-right" class="size-4" />
+              </button>
+            </div>
           </div>
         <% end %>
 
