@@ -59,11 +59,19 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
      |> assign(:modal_error, nil)
      |> assign(:form, to_form(%{"user_id" => "", "api_key" => ""}, as: :steam))
      |> assign(:psn_form, to_form(%{"psn_id" => "", "api_key" => ""}, as: :psn))
+     |> assign(:psn_verification_code, generate_verification_code())
+     |> assign(:retro_verification_code, generate_verification_code())
      |> refresh_platforms()}
   end
 
   defp retro_form do
     to_form(%{"username" => "", "api_key" => ""}, as: :retro)
+  end
+
+  defp generate_verification_code do
+    chars = ~c"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    suffix = for _ <- 1..4, into: "", do: <<Enum.random(chars)>>
+    "PRISMA-" <> suffix
   end
 
   @impl true
@@ -349,8 +357,11 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
   end
 
   defp connect_psn(socket, psn_id, npsso) do
+    code = socket.assigns.psn_verification_code
+
     with {:ok, auth} <- Psn_Auth.authenticate(npsso),
          {:ok, profile} <- Psn_Profile.get_profile_from_username(auth.access_token, psn_id),
+         :ok <- check_about_me_code(profile, code),
          {:ok, _account} <-
            Accounts.connect_platform_account(socket.assigns.profile_id, "playstation", %{
              "external_user_id" => profile.account_id,
@@ -363,7 +374,8 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
        |> assign(:modal_open, false)
        |> assign(:modal_platform, nil)
        |> assign(:modal_error, nil)
-       |> assign(:psn_form, to_form(%{"psn_id" => psn_id, "api_key" => npsso}, as: :psn))
+       |> assign(:psn_form, to_form(%{"psn_id" => "", "api_key" => ""}, as: :psn))
+       |> assign(:psn_verification_code, generate_verification_code())
        |> put_flash(:info, "Conta PlayStation vinculada com sucesso")}
     else
       {:error, :platform_not_found} ->
@@ -377,6 +389,16 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
            :error,
            "Plataforma PlayStation não encontrada no banco. Rode o seed para cadastrar as plataformas."
          )}
+
+      {:error, :verification_code_missing} ->
+        {:noreply,
+         socket
+         |> assign(
+           :modal_error,
+           "Não encontramos o código de verificação no seu 'Sobre Mim'. Confirme que colou o código mostrado acima no seu perfil PlayStation, salve e aguarde alguns segundos antes de tentar novamente."
+         )
+         |> put_flash(:error, "Código de verificação não encontrado no 'Sobre Mim'")
+         |> assign(:psn_form, to_form(%{"psn_id" => psn_id, "api_key" => npsso}, as: :psn))}
 
       {:error, :invalid_credentials} ->
         {:noreply,
@@ -495,7 +517,10 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
   end
 
   defp connect_retro(socket, username, api_key) do
-    with :ok <- validate_retro_credentials(username, api_key),
+    code = socket.assigns.retro_verification_code
+
+    with {:ok, body} <- validate_retro_credentials(username, api_key),
+         :ok <- check_motto_code(body, code),
          {:ok, _account} <-
            Accounts.connect_platform_account(socket.assigns.profile_id, "retroachievements", %{
              "external_user_id" => username,
@@ -509,8 +534,19 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
        |> assign(:modal_platform, nil)
        |> assign(:modal_error, nil)
        |> assign(:form, retro_form())
+       |> assign(:retro_verification_code, generate_verification_code())
        |> put_flash(:info, "Conta RetroAchievements vinculada com sucesso")}
     else
+      {:error, :verification_code_missing} ->
+        {:noreply,
+         socket
+         |> assign(
+           :modal_error,
+           "Não encontramos o código de verificação no campo 'Motto' do seu perfil RetroAchievements. Confirme que colou o código mostrado acima, salve e tente novamente."
+         )
+         |> put_flash(:error, "Código de verificação não encontrado no Motto")
+         |> assign(:form, to_form(%{"username" => username, "api_key" => api_key}, as: :retro))}
+
       {:error, :platform_not_found} ->
         {:noreply,
          socket
@@ -577,6 +613,23 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
     end
   end
 
+  defp check_about_me_code(%{about_me: about_me}, code)
+       when is_binary(about_me) and is_binary(code) do
+    if String.contains?(about_me, code), do: :ok, else: {:error, :verification_code_missing}
+  end
+
+  defp check_about_me_code(_profile, _code), do: {:error, :verification_code_missing}
+
+  defp check_motto_code(body, code) when is_map(body) and is_binary(code) do
+    motto = body["Motto"] || ""
+
+    if is_binary(motto) and String.contains?(motto, code),
+      do: :ok,
+      else: {:error, :verification_code_missing}
+  end
+
+  defp check_motto_code(_body, _code), do: {:error, :verification_code_missing}
+
   defp validate_steam_credentials(steam_id, api_key) do
     case SteamClient.get_player_summary(steam_id, api_key) do
       {:ok, %{status: 200, body: %{"response" => %{"players" => players}}}}
@@ -599,7 +652,7 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
   defp validate_retro_credentials(username, api_key) do
     case RetroClient.get_player_profile(username, api_key) do
       {:ok, %{status: 200, body: body}} when is_map(body) and body != %{} ->
-        :ok
+        {:ok, body}
 
       {:ok, %{status: 200}} ->
         {:error, :invalid_credentials}
@@ -684,10 +737,29 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
             <% else %>
               <%= if @modal_platform.slug == "playstation" do %>
                 <p class="connect-modal-instruction">
-                  Insira seu PSN ID e seu Token de Acesso para validar e vincular a conta.
-                  <br /><br />
-                  <strong>Como obter o Token de Acesso (NPSSO):</strong>
-                  <br /> Acesse
+                  <strong>1) Confirme que esta conta é sua:</strong>
+                  <br />
+                  Adicione o código abaixo em qualquer ponto do seu campo "Sobre Mim" no perfil PlayStation antes de clicar em Vincular. Você não precisa apagar o texto existente — basta colar o código no início, no fim ou entre o que já está lá. O PlayStation pode levar alguns segundos para refletir a alteração.
+                </p>
+
+                <div
+                  class="connect-input-group"
+                  style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;text-align:center;"
+                >
+                  <div style="font-size:0.75rem;opacity:0.7;margin-bottom:4px;">
+                    Código de verificação
+                  </div>
+                  <div
+                    id="psn-verification-code"
+                    style="font-family:monospace;font-size:1.25rem;letter-spacing:0.1em;font-weight:bold;"
+                  >
+                    {@psn_verification_code}
+                  </div>
+                </div>
+
+                <p class="connect-modal-instruction">
+                  <strong>2) Insira suas credenciais:</strong>
+                  <br /> PSN ID e Token de Acesso (NPSSO). Obtenha o NPSSO em
                   <a
                     href="https://ca.account.sony.com/api/v1/ssocookie"
                     target="_blank"
@@ -724,8 +796,39 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
                 </div>
               <% else %>
                 <p class="connect-modal-instruction">
-                  Insira seu nome de usuário e sua Web API Key para validar e vincular a conta.<br />
-                  É possível obter a Web API Key no menu de configurações do site Retro Achievements.
+                  <strong>1) Confirme que esta conta é sua:</strong>
+                  <br />
+                  Adicione o código abaixo em qualquer ponto do campo "Motto" do seu perfil RetroAchievements antes de clicar em Vincular. Você pode mantê-lo junto com seu texto atual.
+                  <br />
+                  <a
+                    href="https://retroachievements.org/controlpanel.php"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style="color: #3b82f6; text-decoration: underline;"
+                  >
+                    Abrir configurações do RetroAchievements
+                  </a>
+                </p>
+
+                <div
+                  class="connect-input-group"
+                  style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;text-align:center;"
+                >
+                  <div style="font-size:0.75rem;opacity:0.7;margin-bottom:4px;">
+                    Código de verificação
+                  </div>
+                  <div
+                    id="retro-verification-code"
+                    style="font-family:monospace;font-size:1.25rem;letter-spacing:0.1em;font-weight:bold;"
+                  >
+                    {@retro_verification_code}
+                  </div>
+                </div>
+
+                <p class="connect-modal-instruction">
+                  <strong>2) Insira suas credenciais:</strong>
+                  <br />
+                  Nome de usuário e Web API Key (disponível no menu de configurações do RetroAchievements).
                 </p>
 
                 <p :if={@modal_error} class="connect-modal-error" role="alert">{@modal_error}</p>
