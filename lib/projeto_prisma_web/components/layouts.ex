@@ -62,8 +62,8 @@ defmodule ProjetoPrismaWeb.Layouts do
     <%= if @variant == "bare" do %>
       {render_slot(@inner_block)}
     <% else %>
-      <main class="content-layer min-h-screen">
-        <div class={["p-6 overflow-y-auto scrollbar-thin", @show_navbar && "md:ml-14"]}>
+      <main class="min-h-screen">
+        <div class="p-6">
           <div class="max-w-7xl mx-auto">
             {render_slot(@inner_block)}
           </div>
