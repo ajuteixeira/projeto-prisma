@@ -252,11 +252,15 @@
    =========================== */
 .manage-modal-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-  max-height: 50vh;
-  overflow-y: auto;
   padding: 4px;
+}
+
+@media (max-width: 640px) {
+  .manage-modal-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .manage-modal-card {
