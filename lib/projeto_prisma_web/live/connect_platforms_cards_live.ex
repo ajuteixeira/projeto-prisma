@@ -57,6 +57,10 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
      |> assign(:modal_open, false)
      |> assign(:modal_platform, nil)
      |> assign(:modal_error, nil)
+     |> assign(:sync_error_modal, false)
+     |> assign(:sync_error_platform, nil)
+     |> assign(:confirm_disconnect_modal, false)
+     |> assign(:confirm_disconnect_platform, nil)
      |> assign(:form, to_form(%{"user_id" => "", "api_key" => ""}, as: :steam))
      |> assign(:psn_form, to_form(%{"psn_id" => "", "api_key" => ""}, as: :psn))
      |> assign(:psn_verification_code, generate_verification_code())
@@ -83,7 +87,7 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
         {:noreply, put_flash(socket, :error, "Plataforma Steam não encontrada na tela")}
 
       platform.connected ->
-        disconnect_steam(socket)
+        show_confirm_disconnect(socket, platform)
 
       true ->
         {:noreply,
@@ -104,7 +108,7 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
          put_flash(socket, :error, "Plataforma RetroAchievements não encontrada na tela")}
 
       platform.connected ->
-        disconnect_retro(socket)
+        show_confirm_disconnect(socket, platform)
 
       true ->
         {:noreply,
@@ -124,7 +128,7 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
         {:noreply, put_flash(socket, :error, "Plataforma PlayStation não encontrada na tela")}
 
       platform.connected ->
-        disconnect_psn(socket)
+        show_confirm_disconnect(socket, platform)
 
       true ->
         {:noreply,
@@ -144,7 +148,7 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
         {:noreply, put_flash(socket, :error, "Plataforma Xbox não encontrada na tela")}
 
       platform.connected ->
-        disconnect_xbox(socket)
+        show_confirm_disconnect(socket, platform)
 
       is_nil(socket.assigns.profile_id) ->
         {:noreply, put_flash(socket, :error, "Não foi possível identificar o perfil atual")}
@@ -170,6 +174,9 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
          socket
          |> refresh_platforms()
          |> put_flash(:info, "Conta Xbox desvinculada")}
+
+      {:error, :sync_in_progress} ->
+        {:noreply, socket |> assign(:sync_error_modal, true) |> assign(:sync_error_platform, "Xbox")}
 
       {:error, :platform_not_found} ->
         {:noreply, put_flash(socket, :error, "Plataforma Xbox não cadastrada")}
@@ -476,6 +483,9 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
          |> refresh_platforms()
          |> put_flash(:info, "Conta PlayStation desvinculada")}
 
+      {:error, :sync_in_progress} ->
+        {:noreply, socket |> assign(:sync_error_modal, true) |> assign(:sync_error_platform, "PlayStation")}
+
       {:error, :platform_not_found} ->
         {:noreply, put_flash(socket, :error, "Plataforma PlayStation não cadastrada")}
 
@@ -507,6 +517,9 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
          socket
          |> refresh_platforms()
          |> put_flash(:info, "Conta Steam desvinculada")}
+
+      {:error, :sync_in_progress} ->
+        {:noreply, socket |> assign(:sync_error_modal, true) |> assign(:sync_error_platform, "Steam")}
 
       {:error, :platform_not_found} ->
         {:noreply, put_flash(socket, :error, "Plataforma Steam não cadastrada")}
@@ -604,6 +617,12 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
          |> refresh_platforms()
          |> put_flash(:info, "Conta RetroAchievements desvinculada")}
 
+      {:error, :sync_in_progress} ->
+        {:noreply,
+         socket
+         |> assign(:sync_error_modal, true)
+         |> assign(:sync_error_platform, "RetroAchievements")}
+
       {:error, :platform_not_found} ->
         {:noreply, put_flash(socket, :error, "Plataforma RetroAchievements não cadastrada")}
 
@@ -611,6 +630,36 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
         {:noreply,
          put_flash(socket, :error, "Não foi possível desvincular a conta RetroAchievements")}
     end
+  end
+
+  def handle_event("close_sync_error_modal", _params, socket) do
+    {:noreply, socket |> assign(:sync_error_modal, false) |> assign(:sync_error_platform, nil)}
+  end
+
+  def handle_event("close_confirm_disconnect_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:confirm_disconnect_modal, false)
+     |> assign(:confirm_disconnect_platform, nil)}
+  end
+
+  def handle_event("confirm_disconnect", %{"platform" => slug}, socket) do
+    socket = socket |> assign(:confirm_disconnect_modal, false) |> assign(:confirm_disconnect_platform, nil)
+
+    case slug do
+      "steam" -> disconnect_steam(socket)
+      "xbox" -> disconnect_xbox(socket)
+      "playstation" -> disconnect_psn(socket)
+      "retroachievements" -> disconnect_retro(socket)
+      _ -> {:noreply, socket}
+    end
+  end
+
+  defp show_confirm_disconnect(socket, platform) do
+    {:noreply,
+     socket
+     |> assign(:confirm_disconnect_modal, true)
+     |> assign(:confirm_disconnect_platform, platform)}
   end
 
   defp check_about_me_code(%{about_me: about_me}, code)
@@ -668,6 +717,116 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
   @impl true
   def render(assigns) do
     ~H"""
+    <%!-- Confirm disconnect modal --%>
+    <div
+      :if={@confirm_disconnect_modal and @confirm_disconnect_platform}
+      id="confirm-disconnect-modal"
+      phx-window-keydown="close_confirm_disconnect_modal"
+      phx-key="escape"
+      style="position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);"
+    >
+      <div
+        phx-click-away="close_confirm_disconnect_modal"
+        style="position:relative;width:100%;max-width:420px;background:linear-gradient(145deg,#0f172a,#1e293b);border:1px solid rgba(239,68,68,0.3);border-radius:16px;box-shadow:0 25px 50px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.05),inset 0 1px 0 rgba(255,255,255,0.07);overflow:hidden;"
+      >
+        <%!-- Top accent bar --%>
+        <div style="height:3px;background:linear-gradient(90deg,#ef4444,#dc2626,transparent);width:100%;"></div>
+
+        <div style="padding:1.75rem;">
+          <%!-- Header --%>
+          <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;">
+            <div style="flex-shrink:0;width:44px;height:44px;border-radius:12px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);display:flex;align-items:center;justify-content:center;">
+              <.icon name="hero-exclamation-triangle" class="size-5" style="color:#ef4444;" />
+            </div>
+            <div>
+              <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#f1f5f9;letter-spacing:-0.01em;">
+                Desvincular {@confirm_disconnect_platform.name}?
+              </h3>
+              <p style="margin:0;font-size:0.78rem;color:#64748b;margin-top:2px;">
+                Esta ação não pode ser desfeita
+              </p>
+            </div>
+          </div>
+
+          <%!-- Body --%>
+          <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:10px;padding:0.875rem 1rem;margin-bottom:1.5rem;">
+            <p style="margin:0;font-size:0.85rem;color:#94a3b8;line-height:1.55;">
+              Todos os <strong style="color:#cbd5e1;">jogos e conquistas</strong> sincronizados desta plataforma serão removidos do seu perfil.
+            </p>
+          </div>
+
+          <%!-- Actions --%>
+          <div style="display:flex;gap:0.75rem;">
+            <button
+              type="button"
+              phx-click="close_confirm_disconnect_modal"
+              style="flex:1;padding:0.6rem 1rem;border-radius:9px;border:1px solid rgba(100,116,139,0.3);background:rgba(30,41,59,0.8);color:#94a3b8;font-size:0.85rem;font-weight:500;cursor:pointer;transition:all 0.15s;letter-spacing:0.01em;"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              phx-click="confirm_disconnect"
+              phx-value-platform={@confirm_disconnect_platform.slug}
+              style="flex:1;padding:0.6rem 1rem;border-radius:9px;border:1px solid rgba(239,68,68,0.4);background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.15s;letter-spacing:0.01em;box-shadow:0 2px 8px rgba(239,68,68,0.3);"
+            >
+              Desvincular
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <%!-- Sync in progress modal --%>
+    <div
+      :if={@sync_error_modal}
+      id="sync-error-modal"
+      phx-window-keydown="close_sync_error_modal"
+      phx-key="escape"
+      style="position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);"
+    >
+      <div
+        phx-click-away="close_sync_error_modal"
+        style="position:relative;width:100%;max-width:420px;background:linear-gradient(145deg,#0f172a,#1e293b);border:1px solid rgba(234,179,8,0.3);border-radius:16px;box-shadow:0 25px 50px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.05),inset 0 1px 0 rgba(255,255,255,0.07);overflow:hidden;"
+      >
+        <%!-- Top accent bar --%>
+        <div style="height:3px;background:linear-gradient(90deg,#eab308,#ca8a04,transparent);width:100%;"></div>
+
+        <div style="padding:1.75rem;">
+          <%!-- Header --%>
+          <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;">
+            <div style="flex-shrink:0;width:44px;height:44px;border-radius:12px;background:rgba(234,179,8,0.12);border:1px solid rgba(234,179,8,0.25);display:flex;align-items:center;justify-content:center;">
+              <.icon name="hero-arrow-path" class="size-5" style="color:#eab308;" />
+            </div>
+            <div>
+              <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#f1f5f9;letter-spacing:-0.01em;">
+                Sincronização em andamento
+              </h3>
+              <p style="margin:0;font-size:0.78rem;color:#64748b;margin-top:2px;">
+                {@sync_error_platform}
+              </p>
+            </div>
+          </div>
+
+          <%!-- Body --%>
+          <div style="background:rgba(234,179,8,0.06);border:1px solid rgba(234,179,8,0.15);border-radius:10px;padding:0.875rem 1rem;margin-bottom:1.5rem;">
+            <p style="margin:0;font-size:0.85rem;color:#94a3b8;line-height:1.55;">
+              A conta <strong style="color:#cbd5e1;">{@sync_error_platform}</strong> está sendo sincronizada no momento. Aguarde a conclusão e tente novamente.
+            </p>
+          </div>
+
+          <%!-- Action --%>
+          <button
+            type="button"
+            phx-click="close_sync_error_modal"
+            style="width:100%;padding:0.65rem 1rem;border-radius:9px;border:1px solid rgba(234,179,8,0.35);background:rgba(234,179,8,0.1);color:#eab308;font-size:0.85rem;font-weight:600;cursor:pointer;letter-spacing:0.01em;"
+          >
+            Entendi
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div
       :if={@modal_open and @modal_platform}
       id="platform-modal"
@@ -743,8 +902,7 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
                 </p>
 
                 <div
-                  class="connect-input-group"
-                  style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;text-align:center;"
+                  style="margin:0.75rem 0;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;text-align:center;"
                 >
                   <div style="font-size:0.75rem;opacity:0.7;margin-bottom:4px;">
                     Código de verificação
@@ -811,8 +969,7 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
                 </p>
 
                 <div
-                  class="connect-input-group"
-                  style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;text-align:center;"
+                  style="margin:0.75rem 0;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;text-align:center;"
                 >
                   <div style="font-size:0.75rem;opacity:0.7;margin-bottom:4px;">
                     Código de verificação
@@ -897,24 +1054,6 @@ defmodule ProjetoPrismaWeb.ConnectPlatformsCardsLive do
           type="button"
           phx-click="platform_action"
           phx-value-platform={platform.slug}
-          data-confirm={
-            cond do
-              platform.connected && platform.slug == "steam" ->
-                "Deseja desvincular sua conta Steam?"
-
-              platform.connected && platform.slug == "playstation" ->
-                "Deseja desvincular sua conta PlayStation?"
-
-              platform.connected && platform.slug == "retroachievements" ->
-                "Deseja desvincular sua conta RetroAchievements?"
-
-              platform.connected && platform.slug == "xbox" ->
-                "Deseja desvincular sua conta Xbox?"
-
-              true ->
-                nil
-            end
-          }
           class={[
             "connect-btn",
             platform.connected && "connected"

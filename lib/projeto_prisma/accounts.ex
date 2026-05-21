@@ -585,17 +585,46 @@ defmodule ProjetoPrisma.Accounts do
   @doc """
   Desconecta uma conta de plataforma por slug de um profile.
 
+  Remove também todos os ProfileGame (e, em cascata, ProfileAchievement) associados
+  à plataforma. A operação é atômica via transação.
+
   Retorna `{:ok, :not_connected}` caso não exista vínculo.
+  Retorna `{:error, :sync_in_progress}` se uma sincronização ativa estiver em andamento.
   """
   def disconnect_platform_account(profile_id, platform_slug) do
     with %Platform{} = platform <- Repo.get_by(Platform, slug: platform_slug) do
       case Repo.get_by(ProfilePlatformAccount, profile_id: profile_id, platform_id: platform.id) do
-        nil -> {:ok, :not_connected}
-        account -> Repo.delete(account)
+        nil ->
+          {:ok, :not_connected}
+
+        %ProfilePlatformAccount{sync_status: "running", sync_started_at: started_at} = account
+        when not is_nil(started_at) ->
+          if NaiveDateTime.diff(NaiveDateTime.utc_now(), started_at, :second) < 300 do
+            {:error, :sync_in_progress}
+          else
+            do_disconnect(account, profile_id, platform.id)
+          end
+
+        account ->
+          do_disconnect(account, profile_id, platform.id)
       end
     else
       nil -> {:error, :platform_not_found}
     end
+  end
+
+  defp do_disconnect(account, profile_id, platform_id) do
+    Repo.transaction(fn ->
+      games_query =
+        from pg in ProfileGame,
+          join: ptg in PlatformGame,
+          on: pg.platform_game_id == ptg.id,
+          where: pg.profile_id == ^profile_id and ptg.platform_id == ^platform_id
+
+      Repo.delete_all(games_query)
+      {:ok, deleted} = Repo.delete(account)
+      deleted
+    end)
   end
 
   @doc """
