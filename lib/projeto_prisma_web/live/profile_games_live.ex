@@ -12,17 +12,32 @@ defmodule ProjetoPrismaWeb.ProfileGamesLive do
     current_scope = Accounts.resolve_scope_from_session(session)
     profile = ProfileDashboard.profile_for_user(scope_user_id(current_scope))
 
+    profile_id = profile && profile.id
+
+    platforms =
+      if is_integer(profile_id) do
+        ProfileDashboard.list_profile_platforms(profile_id)
+      else
+        []
+      end
+
     socket =
       socket
-      |> assign(:profile_id, profile && profile.id)
+      |> assign(:profile_id, profile_id)
       |> assign(:current_page, 1)
+      |> assign(:sort_by, :last_played)
       |> assign(:sort_order, :desc)
       |> assign(:search_query, "")
       |> assign(:search_form, to_form(%{"query" => ""}, as: :search))
+      |> assign(:page_form, to_form(%{"page" => "1"}, as: :page_jump))
+      |> assign(:platforms, platforms)
+      |> assign(:platform_filter, nil)
       |> assign(:selected_game, nil)
       |> assign(:games_empty?, true)
       |> assign(:has_next_page?, false)
       |> assign(:has_previous_page?, false)
+      |> assign(:total_games, 0)
+      |> assign(:total_pages, 1)
       |> stream_configure(:games, dom_id: &"profile-game-#{&1.profile_game_id}")
       |> stream(:games, [], reset: true)
       |> load_page(1)
@@ -56,12 +71,50 @@ defmodule ProjetoPrismaWeb.ProfileGamesLive do
 
   @impl true
   def handle_event("toggle_last_played_order", _params, socket) do
+    sort_order =
+      case socket.assigns.sort_by do
+        :last_played -> toggle_sort_order(socket.assigns.sort_order)
+        _ -> :desc
+      end
+
     socket =
       socket
-      |> assign(:sort_order, toggle_sort_order(socket.assigns.sort_order))
+      |> assign(:sort_by, :last_played)
+      |> assign(:sort_order, sort_order)
       |> load_page(1)
 
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("toggle_completion_order", _params, socket) do
+    sort_order =
+      case socket.assigns.sort_by do
+        :completion -> toggle_sort_order(socket.assigns.sort_order)
+        _ -> :desc
+      end
+
+    socket =
+      socket
+      |> assign(:sort_by, :completion)
+      |> assign(:sort_order, sort_order)
+      |> load_page(1)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("filter_platform", %{"platform_filter" => %{"platform_id" => raw}}, socket) do
+    platform_id =
+      case raw do
+        "" -> nil
+        value -> parse_integer(value)
+      end
+
+    {:noreply,
+     socket
+     |> assign(:platform_filter, platform_id)
+     |> load_page(1)}
   end
 
   @impl true
@@ -96,47 +149,106 @@ defmodule ProjetoPrismaWeb.ProfileGamesLive do
   end
 
   @impl true
+  def handle_event("go_to_page", %{"page_jump" => %{"page" => raw}}, socket) do
+    socket =
+      case parse_integer(raw) do
+        nil ->
+          assign(
+            socket,
+            :page_form,
+            to_form(%{"page" => Integer.to_string(socket.assigns.current_page)}, as: :page_jump)
+          )
+
+        page ->
+          load_page(socket, clamp_page(page, socket.assigns.total_pages))
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="bg-gray-800/80 border border-gray-700 p-6 rounded-2xl w-full">
       <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <h2 class="text-2xl font-bold">Jogos</h2>
 
-        <.form
-          for={@search_form}
-          id="profile-games-search-form"
-          phx-change="search_games"
-          phx-submit="search_games"
-          class="w-full lg:max-w-sm"
-        >
-          <.input
-            field={@search_form[:query]}
-            type="text"
-            placeholder="Buscar jogo pelo nome"
-            autocomplete="off"
-            phx-debounce="300"
-            aria-label="Buscar jogo pelo nome"
-            class="w-full rounded-2xl border border-gray-700 bg-gray-900/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-emerald-400"
-          />
-        </.form>
+        <div class="flex w-full flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+          <.form
+            for={@search_form}
+            id="profile-games-search-form"
+            phx-change="search_games"
+            phx-submit="search_games"
+            class="flex-1"
+          >
+            <input
+              type="text"
+              name={@search_form[:query].name}
+              value={@search_form[:query].value}
+              placeholder="Buscar jogo pelo nome"
+              autocomplete="off"
+              phx-debounce="300"
+              aria-label="Buscar jogo pelo nome"
+              class="w-full rounded-2xl border border-gray-700 bg-gray-900/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-emerald-400"
+            />
+          </.form>
+
+          <.form
+            :if={@platforms != []}
+            for={%{}}
+            as={:platform_filter}
+            id="profile-games-platform-form"
+            phx-change="filter_platform"
+            class="w-full sm:w-auto"
+          >
+            <select
+              name="platform_filter[platform_id]"
+              aria-label="Filtrar por plataforma"
+              class="w-full rounded-2xl border border-gray-700 bg-gray-900/80 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-400 sm:w-56"
+            >
+              <option value="" selected={is_nil(@platform_filter)}>Todas as plataformas</option>
+              <option :for={p <- @platforms} value={p.id} selected={@platform_filter == p.id}>
+                {p.name}
+              </option>
+            </select>
+          </.form>
+        </div>
       </div>
 
       <%!-- Cabeçalho desktop --%>
       <div class="hidden md:grid grid-cols-12 gap-4 px-4 py-3 border-b border-gray-700">
         <div class="col-span-3 table-header">Jogo</div>
-        <div class="col-span-2 table-header">Conclusão</div>
+        <div class="col-span-2 table-header">
+          <button
+            id="profile-games-sort-completion"
+            type="button"
+            phx-click="toggle_completion_order"
+            class="inline-flex items-center gap-1 whitespace-nowrap text-left text-xs font-semibold uppercase tracking-wide text-gray-400 transition hover:text-white"
+          >
+            <span>Conclusão</span>
+            <.icon
+              :if={@sort_by == :completion}
+              name={sort_icon_name(@sort_order)}
+              class="size-4 shrink-0"
+            />
+          </button>
+        </div>
         <div class="col-span-1 table-header">Conquistas</div>
-        <div class="col-span-2 table-header">Tempo de Jogo</div>
+        <div class="col-span-1 table-header">Tempo</div>
         <div class="col-span-2 table-header">Último Desbloqueio</div>
-        <div class="col-span-1 table-header">
+        <div class="col-span-2 table-header">
           <button
             id="profile-games-sort-last-played"
             type="button"
             phx-click="toggle_last_played_order"
-            class="inline-flex items-center gap-1 text-left transition hover:text-white"
+            class="inline-flex items-center gap-1 whitespace-nowrap text-left text-xs font-semibold uppercase tracking-wide text-gray-400 transition hover:text-white"
           >
             <span>Última Vez Jogado</span>
-            <.icon name={sort_icon_name(@sort_order)} class="size-4" />
+            <.icon
+              :if={@sort_by == :last_played}
+              name={sort_icon_name(@sort_order)}
+              class="size-4 shrink-0"
+            />
           </button>
         </div>
         <div class="col-span-1 table-header">Plataforma</div>
@@ -152,8 +264,12 @@ defmodule ProjetoPrismaWeb.ProfileGamesLive do
             <.icon name="hero-information-circle" class="size-6 text-emerald-300" />
           </div>
           <div>
-            <p class="text-lg font-semibold text-white">{empty_state_title(@search_query)}</p>
-            <p class="mt-1 text-sm text-gray-400">{empty_state_message(@search_query)}</p>
+            <p class="text-lg font-semibold text-white">
+              {empty_state_title(@search_query, @platform_filter)}
+            </p>
+            <p class="mt-1 text-sm text-gray-400">
+              {empty_state_message(@search_query, @platform_filter)}
+            </p>
           </div>
         </div>
       </div>
@@ -244,18 +360,15 @@ defmodule ProjetoPrismaWeb.ProfileGamesLive do
                   {game.unlocked_achievements} / {game.total_achievements}
                 </span>
               </div>
-              <div class="col-span-6 md:col-span-2">
+              <div class="col-span-6 md:col-span-1">
                 <div class="text-sm">
                   <div>{format_playtime(game.playtime_minutes)}</div>
-                  <div class="text-xs text-gray-400">
-                    Total {format_playtime(game.playtime_minutes)}
-                  </div>
                 </div>
               </div>
               <div class="col-span-6 md:col-span-2">
                 <span class="text-sm text-gray-400">{format_datetime(game.last_unlock_time)}</span>
               </div>
-              <div class="col-span-6 md:col-span-1">
+              <div class="col-span-6 md:col-span-2">
                 <span class="text-sm text-gray-400">{format_date(game.last_played)}</span>
               </div>
               <div class="col-span-6 md:col-span-1">
@@ -271,7 +384,15 @@ defmodule ProjetoPrismaWeb.ProfileGamesLive do
         id="profile-games-pagination"
         class="mt-6 flex flex-col gap-3 border-t border-gray-700/80 pt-5 sm:flex-row sm:items-center sm:justify-between"
       >
-        <div class="flex items-center justify-end gap-2">
+        <div class="text-sm text-gray-400">
+          Página <span class="font-semibold text-white">{@current_page}</span>
+          de <span class="font-semibold text-white">{@total_pages}</span>
+          <span class="mx-2 text-gray-600">·</span>
+          <span class="font-semibold text-white">{@total_games}</span>
+          {if @total_games == 1, do: "jogo", else: "jogos"}
+        </div>
+
+        <div class="flex flex-wrap items-center justify-end gap-2">
           <button
             id="profile-games-previous-page"
             type="button"
@@ -281,12 +402,32 @@ defmodule ProjetoPrismaWeb.ProfileGamesLive do
               "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition",
               @has_previous_page? &&
                 "border-gray-600 bg-gray-800/80 text-white hover:border-gray-500 hover:bg-gray-700/80",
-              !@has_previous_page? && "cursor-not-allowed border-gray-800 bg-gray-900/70 text-gray-500"
+              !@has_previous_page? &&
+                "cursor-not-allowed border-gray-800 bg-gray-900/70 text-gray-500"
             ]}
           >
-            <.icon name="hero-chevron-left" class="size-4" />
-            Anterior
+            <.icon name="hero-chevron-left" class="size-4" /> Anterior
           </button>
+
+          <.form
+            for={@page_form}
+            id="profile-games-page-form"
+            phx-submit="go_to_page"
+            phx-change="go_to_page"
+            class="flex items-center gap-2"
+          >
+            <input
+              type="number"
+              name="page_jump[page]"
+              value={@page_form[:page].value}
+              min="1"
+              max={@total_pages}
+              inputmode="numeric"
+              phx-debounce="blur"
+              aria-label="Ir para página"
+              class="w-20 rounded-xl border border-gray-700 bg-gray-900/80 px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-emerald-400"
+            />
+          </.form>
 
           <button
             id="profile-games-next-page"
@@ -301,8 +442,7 @@ defmodule ProjetoPrismaWeb.ProfileGamesLive do
                 "cursor-not-allowed border-gray-800 bg-gray-900/70 text-gray-500"
             ]}
           >
-            Próxima
-            <.icon name="hero-chevron-right" class="size-4" />
+            Próxima <.icon name="hero-chevron-right" class="size-4" />
           </button>
         </div>
       </div>
@@ -350,42 +490,60 @@ defmodule ProjetoPrismaWeb.ProfileGamesLive do
 
   defp load_page(socket, page) when page > 0 do
     profile_id = socket.assigns.profile_id
-    offset = (page - 1) * @page_size
     sort_order = socket.assigns.sort_order
+    sort_by = socket.assigns.sort_by
     search_query = socket.assigns.search_query
+    platform_id = socket.assigns.platform_filter
 
-    games =
+    total_games =
       if is_integer(profile_id) do
-        ProfileDashboard.list_games(profile_id, @page_size + 1,
+        ProfileDashboard.count_games(profile_id,
+          search_query: search_query,
+          platform_id: platform_id
+        )
+      else
+        0
+      end
+
+    total_pages = max(1, ceil_div(total_games, @page_size))
+    current_page = clamp_page(page, total_pages)
+    offset = (current_page - 1) * @page_size
+
+    page_games =
+      if is_integer(profile_id) and total_games > 0 do
+        ProfileDashboard.list_games(profile_id, @page_size,
           offset: offset,
           sort_order: sort_order,
-          search_query: search_query
+          sort_by: sort_by,
+          search_query: search_query,
+          platform_id: platform_id
         )
       else
         []
       end
 
-    {page_games, has_next_page?} = page_entries(games)
-
-    if page > 1 and page_games == [] do
-      load_page(socket, page - 1)
-    else
-      socket
-      |> assign(:current_page, page)
-      |> assign(:selected_game, nil)
-      |> assign(:games_empty?, page_games == [])
-      |> assign(:has_next_page?, has_next_page?)
-      |> assign(:has_previous_page?, page > 1)
-      |> stream(:games, page_games, reset: true)
-    end
+    socket
+    |> assign(:current_page, current_page)
+    |> assign(:selected_game, nil)
+    |> assign(:games_empty?, page_games == [])
+    |> assign(:has_next_page?, current_page < total_pages and total_games > 0)
+    |> assign(:has_previous_page?, current_page > 1)
+    |> assign(:total_games, total_games)
+    |> assign(:total_pages, total_pages)
+    |> assign(
+      :page_form,
+      to_form(%{"page" => Integer.to_string(current_page)}, as: :page_jump)
+    )
+    |> stream(:games, page_games, reset: true)
   end
 
-  defp page_entries(games) do
-    case Enum.split(games, @page_size) do
-      {page_games, []} -> {page_games, false}
-      {page_games, _rest} -> {page_games, true}
-    end
+  defp clamp_page(page, total_pages) when is_integer(page) and is_integer(total_pages) do
+    page |> max(1) |> min(max(total_pages, 1))
   end
+
+  defp ceil_div(_numerator, denominator) when denominator <= 0, do: 0
+  defp ceil_div(numerator, _denominator) when numerator <= 0, do: 0
+  defp ceil_div(numerator, denominator), do: div(numerator + denominator - 1, denominator)
 
   defp toggle_sort_order(:asc), do: :desc
   defp toggle_sort_order(_sort_order), do: :asc
@@ -393,13 +551,16 @@ defmodule ProjetoPrismaWeb.ProfileGamesLive do
   defp sort_icon_name(:asc), do: "hero-chevron-up"
   defp sort_icon_name(_sort_order), do: "hero-chevron-down"
 
-  defp empty_state_title(""), do: "Sem jogos sincronizados"
-  defp empty_state_title(_search_query), do: "Nenhum jogo encontrado"
+  defp empty_state_title("", nil), do: "Sem jogos sincronizados"
+  defp empty_state_title(_search_query, _platform_filter), do: "Nenhum jogo encontrado"
 
-  defp empty_state_message(""),
+  defp empty_state_message("", nil),
     do: "Conecte uma plataforma para começar a preencher seu histórico de jogos."
 
-  defp empty_state_message(_search_query),
+  defp empty_state_message(_search_query, platform_filter) when not is_nil(platform_filter),
+    do: "Nenhum jogo encontrado para os filtros aplicados."
+
+  defp empty_state_message(_search_query, _platform_filter),
     do: "Tente outro nome para localizar um jogo específico na sua biblioteca."
 
   defp normalize_search_query(search_query) when is_binary(search_query) do

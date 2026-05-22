@@ -786,6 +786,37 @@ defmodule ProjetoPrisma.Accounts do
   def list_achieved_achievements(_scope, _opts), do: []
 
   @doc """
+  Conta o total de conquistas desbloqueadas do usuario logado, com suporte a `:search`.
+  """
+  def count_achieved_achievements(scope, opts \\ [])
+
+  def count_achieved_achievements(%Scope{user: %User{id: user_id}}, opts) do
+    search = opts |> option_value(:search, "") |> normalize_search()
+
+    ProfileAchievement
+    |> join(:inner, [pa], pg in assoc(pa, :profile_game))
+    |> join(:inner, [_pa, pg], profile in Profile, on: profile.id == pg.profile_id)
+    |> join(:inner, [pa, _pg, _profile], achievement in assoc(pa, :achievement))
+    |> join(:inner, [_pa, pg, _profile, _achievement], platform_game in assoc(pg, :platform_game))
+    |> join(
+      :inner,
+      [_pa, _pg, _profile, _achievement, platform_game],
+      game in assoc(platform_game, :game)
+    )
+    |> where(
+      [_pa, _pg, profile, _achievement, _platform_game, _game],
+      profile.user_id == ^user_id
+    )
+    |> where([pa, _pg, _profile, _achievement, _platform_game, _game], pa.achieved == true)
+    |> maybe_filter_achievement_search(search)
+    |> select([pa, _pg, _profile, _achievement, _platform_game, _game], count(pa.id))
+    |> Repo.one()
+    |> Kernel.||(0)
+  end
+
+  def count_achieved_achievements(_scope, _opts), do: 0
+
+  @doc """
   Lista as conquistas fixadas do usuario logado ordenadas pela posicao.
   """
   def list_pinned_achievements(%Scope{user: %User{id: user_id}}) do
@@ -903,13 +934,17 @@ defmodule ProjetoPrisma.Accounts do
     all_profile_ids = [profile_id | followed_ids]
 
     raw_counts =
-      (from pa in ProfileAchievement,
-        join: pg in ProfileGame, on: pg.id == pa.profile_game_id,
-        join: ppg in PlatformGame, on: ppg.id == pg.platform_game_id,
-        join: plat in Platform, on: plat.id == ppg.platform_id,
+      from(pa in ProfileAchievement,
+        join: pg in ProfileGame,
+        on: pg.id == pa.profile_game_id,
+        join: ppg in PlatformGame,
+        on: ppg.id == pg.platform_game_id,
+        join: plat in Platform,
+        on: plat.id == ppg.platform_id,
         where: pg.profile_id in ^all_profile_ids and pa.achieved == true,
         group_by: [pg.profile_id, plat.slug],
-        select: {pg.profile_id, plat.slug, count(pa.id)})
+        select: {pg.profile_id, plat.slug, count(pa.id)}
+      )
       |> Repo.all()
 
     counts_by_profile =
@@ -923,11 +958,12 @@ defmodule ProjetoPrisma.Accounts do
       end)
 
     platforms_by_profile =
-      (from ppa in ProfilePlatformAccount,
+      from(ppa in ProfilePlatformAccount,
         join: plat in Platform,
         on: plat.id == ppa.platform_id,
         where: ppa.profile_id in ^all_profile_ids,
-        select: {ppa.profile_id, plat.slug})
+        select: {ppa.profile_id, plat.slug}
+      )
       |> Repo.all()
       |> Enum.group_by(fn {pid, _slug} -> pid end, fn {_pid, slug} -> slug end)
 

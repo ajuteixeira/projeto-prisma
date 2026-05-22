@@ -25,7 +25,7 @@ defmodule ProjetoPrismaWeb.ProfileGameModal do
         style="background: rgba(30, 35, 45, 0.97); border: 1px solid rgba(96, 165, 250, 0.3); box-shadow: 0 0 40px rgba(96, 165, 250, 0.08), 0 25px 60px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.08);"
       >
         <div
-          class="relative h-56 border-b border-[rgba(96,165,250,0.2)] bg-cover bg-center"
+          class="relative h-56 bg-cover bg-center"
           style={"background-image: linear-gradient(to bottom, rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.96)), url('#{cover_image(@game)}');"}
         >
           <div class="absolute inset-0 bg-gradient-to-tr from-slate-950/80 via-transparent to-emerald-500/10">
@@ -36,8 +36,7 @@ defmodule ProjetoPrismaWeb.ProfileGameModal do
             phx-click={@close_event}
             class="absolute right-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-white/15 bg-slate-900/80 px-4 py-2 text-sm text-white transition hover:border-white/30 hover:bg-slate-800/90"
           >
-            <.icon name="hero-x-mark" class="size-4" />
-            Fechar
+            <.icon name="hero-x-mark" class="size-4" /> Fechar
           </button>
 
           <div class="absolute bottom-0 left-0 right-0 z-10 p-6 sm:p-8">
@@ -70,7 +69,10 @@ defmodule ProjetoPrismaWeb.ProfileGameModal do
 
         <div class="max-h-[calc(90vh-14rem)] p-6 sm:p-8">
           <div class="mt-6 grid gap-4 lg:grid-cols-2">
-            <div class="rounded-2xl p-5" style="background: rgba(96, 165, 250, 0.06); border: 1px solid rgba(96, 165, 250, 0.18);">
+            <div
+              class="rounded-2xl p-5"
+              style="background: rgba(96, 165, 250, 0.06); border: 1px solid rgba(96, 165, 250, 0.18);"
+            >
               <h4 class="text-lg font-semibold text-white">Informações do Jogo</h4>
               <div class="mt-4 space-y-3 text-sm">
                 <div class="flex items-start justify-between gap-4 border-b border-[rgba(255,255,255,0.06)] pb-3">
@@ -101,76 +103,78 @@ defmodule ProjetoPrismaWeb.ProfileGameModal do
                     {format_datetime(@game.last_unlock_time)}
                   </span>
                 </div>
-
               </div>
             </div>
 
-            <div class="rounded-2xl p-5" style="background: rgba(96, 165, 250, 0.06); border: 1px solid rgba(96, 165, 250, 0.18);">
-              <div class="flex items-center justify-between gap-4">
-                <div>
-                  <h4 class="text-lg font-semibold text-white">Conquistas</h4>
-                  <p class="text-sm text-gray-400">
-                    {unlocked_count(@game)} desbloqueadas de {total_count(@game)}
-                  </p>
-                </div>
-                <div class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.18em] text-gray-300">
-                  {length(achievement_items(@game))} itens
-                </div>
-              </div>
-
-              <div class="mt-4 max-h-80 space-y-3 overflow-y-auto pr-1">
-                <div
-                  :if={achievement_items(@game) == []}
-                  class="rounded-2xl border border-dashed border-gray-700 px-4 py-6 text-center text-sm text-gray-400"
-                >
-                  Nenhuma conquista encontrada para este jogo.
+            <div
+              class="relative rounded-2xl"
+              style="background: rgba(96, 165, 250, 0.06); border: 1px solid rgba(96, 165, 250, 0.18);"
+            >
+              <div class="flex flex-col p-5 lg:absolute lg:inset-0">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <h4 class="text-lg font-semibold text-white">Conquistas</h4>
+                    <p class="text-sm text-gray-400">
+                      {unlocked_count(@game)} desbloqueadas de {total_count(@game)}
+                    </p>
+                  </div>
+                  <div class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.18em] text-gray-300">
+                    {length(achievement_items(@game))} itens
+                  </div>
                 </div>
 
-                <div
-                  :for={achievement <- achievement_items(@game)}
-                  class={[
-                    "flex gap-4 rounded-2xl border p-3 transition",
-                    achievement.achieved && "border-emerald-500/20 bg-emerald-500/10",
-                    !achievement.achieved && "border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.25)]"
-                  ]}
-                >
-                  <div class="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-gray-800">
-                    <img
-                      :if={achievement_icon(achievement)}
-                      src={achievement_icon(achievement)}
-                      alt={achievement.name}
-                      class="h-full w-full object-cover"
-                    />
-                    <div
-                      :if={!achievement_icon(achievement)}
-                      class="flex h-full w-full items-center justify-center text-gray-500"
-                    >
-                      <.icon name="hero-trophy" class="size-5" />
-                    </div>
+                <div class="mt-4 max-h-72 flex-1 space-y-3 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0">
+                  <div
+                    :if={achievement_items(@game) == []}
+                    class="rounded-2xl border border-dashed border-gray-700 px-4 py-6 text-center text-sm text-gray-400"
+                  >
+                    Nenhuma conquista encontrada para este jogo.
                   </div>
 
-                  <div class="min-w-0 flex-1">
-                    <div class="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <div class="font-semibold text-white">{achievement.name}</div>
-                        <div :if={achievement.description} class="mt-1 text-sm text-gray-400">
-                          {achievement.description}
-                        </div>
+                  <div
+                    :for={achievement <- achievement_items(@game)}
+                    class={[
+                      "flex gap-4 rounded-2xl border p-3 transition",
+                      achievement.achieved && "border-emerald-500/20 bg-emerald-500/10",
+                      !achievement.achieved && "border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.25)]"
+                    ]}
+                  >
+                    <div class="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-gray-800">
+                      <img
+                        :if={achievement_icon(achievement)}
+                        src={achievement_icon(achievement)}
+                        alt={achievement.name}
+                        class="h-full w-full object-cover"
+                      />
+                      <div
+                        :if={!achievement_icon(achievement)}
+                        class="flex h-full w-full items-center justify-center text-gray-500"
+                      >
+                        <.icon name="hero-trophy" class="size-5" />
                       </div>
+                    </div>
 
-                      <span
-                        class={[
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div class="font-semibold text-white">{achievement.name}</div>
+                          <div :if={achievement.description} class="mt-1 text-sm text-gray-400">
+                            {achievement.description}
+                          </div>
+                        </div>
+
+                        <span class={[
                           "rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]",
                           achievement.achieved && "bg-emerald-400/15 text-emerald-200",
                           !achievement.achieved && "bg-gray-800 text-gray-300"
-                        ]}
-                      >
-                        {achievement_status_label(achievement)}
-                      </span>
-                    </div>
+                        ]}>
+                          {achievement_status_label(achievement)}
+                        </span>
+                      </div>
 
-                    <div class="mt-2 text-xs text-gray-500">
-                      {achievement_unlock_label(achievement)}
+                      <div class="mt-2 text-xs text-gray-500">
+                        {achievement_unlock_label(achievement)}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -218,10 +222,13 @@ defmodule ProjetoPrismaWeb.ProfileGameModal do
   defp completion_label(value) when is_integer(value), do: "#{value}%"
   defp completion_label(_), do: "0%"
 
-  defp achievement_items(%{achievements: achievements}) when is_list(achievements), do: achievements
+  defp achievement_items(%{achievements: achievements}) when is_list(achievements),
+    do: achievements
+
   defp achievement_items(_), do: []
 
-  defp achievement_icon(%{achieved: true, icon_image: img}) when is_binary(img) and img != "", do: img
+  defp achievement_icon(%{achieved: true, icon_image: img}) when is_binary(img) and img != "",
+    do: img
 
   defp achievement_icon(%{icon_locked_image: img}) when is_binary(img) and img != "",
     do: img
