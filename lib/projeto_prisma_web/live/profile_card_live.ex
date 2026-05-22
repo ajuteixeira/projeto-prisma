@@ -32,8 +32,8 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
      |> assign(:current_scope, current_scope)
      |> assign(:profile, profile)
      |> assign(:profile_missing, is_nil(profile))
-    |> assign(:followers_count, followers_count)
-    |> assign(:following_count, following_count)
+     |> assign(:followers_count, followers_count)
+     |> assign(:following_count, following_count)
      |> assign(:modal_open, false)
      |> assign(:modal_error, nil)
      |> assign(:full_name, full_name)
@@ -47,6 +47,9 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
      |> assign(:achievements_page, 1)
      |> assign(:has_next_achievements_page?, false)
      |> assign(:has_previous_achievements_page?, false)
+     |> assign(:total_achievements, 0)
+     |> assign(:total_achievements_pages, 1)
+     |> assign(:achievements_page_form, to_form(%{"page" => "1"}, as: :ach_page_jump))
      |> assign(:trophy_detail_modal_open, false)
      |> assign(:selected_trophy, nil)
      |> allow_upload(:avatar,
@@ -254,6 +257,30 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
     {:noreply, load_achievements_page(socket, page, socket.assigns.achievement_search)}
   end
 
+  def handle_event("go_to_achievements_page", %{"ach_page_jump" => %{"page" => raw}}, socket) do
+    socket =
+      case parse_int(raw) do
+        nil ->
+          assign(
+            socket,
+            :achievements_page_form,
+            to_form(%{"page" => Integer.to_string(socket.assigns.achievements_page)},
+              as: :ach_page_jump
+            )
+          )
+
+        page ->
+          target =
+            page
+            |> max(1)
+            |> min(max(socket.assigns.total_achievements_pages, 1))
+
+          load_achievements_page(socket, target, socket.assigns.achievement_search)
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_event("toggle_pinned_achievement", %{"id" => raw_id}, socket) do
     id = parse_int(raw_id)
     selected = socket.assigns.selected_achievement_ids
@@ -309,7 +336,11 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
 
       {:error, :too_many_pins} ->
         {:noreply,
-         assign(socket, :achievements_modal_error, "Voce so pode fixar ate #{@max_pins} conquistas.")}
+         assign(
+           socket,
+           :achievements_modal_error,
+           "Voce so pode fixar ate #{@max_pins} conquistas."
+         )}
 
       {:error, :invalid_achievement_selection} ->
         {:noreply,
@@ -384,30 +415,52 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
   end
 
   defp load_achievements_page(socket, page, search) do
-    page = max(page, 1)
-    offset = (page - 1) * @achievements_page_size
+    total = safe_count_available(socket.assigns.current_scope, search)
+    total_pages = max(1, ceil_div(total, @achievements_page_size))
+    current_page = page |> max(1) |> min(total_pages)
+    offset = (current_page - 1) * @achievements_page_size
 
-    rows =
-      safe_list_available(socket.assigns.current_scope, search,
-        limit: @achievements_page_size + 1,
-        offset: offset
-      )
-
-    {entries, has_next?} =
-      case rows do
-        rows when length(rows) > @achievements_page_size ->
-          {Enum.take(rows, @achievements_page_size), true}
-
-        rows ->
-          {rows, false}
+    entries =
+      if total > 0 do
+        safe_list_available(socket.assigns.current_scope, search,
+          limit: @achievements_page_size,
+          offset: offset
+        )
+      else
+        []
       end
 
     socket
     |> assign(:available_achievements, entries)
-    |> assign(:achievements_page, page)
-    |> assign(:has_next_achievements_page?, has_next?)
-    |> assign(:has_previous_achievements_page?, page > 1)
+    |> assign(:achievements_page, current_page)
+    |> assign(:has_next_achievements_page?, current_page < total_pages and total > 0)
+    |> assign(:has_previous_achievements_page?, current_page > 1)
+    |> assign(:total_achievements, total)
+    |> assign(:total_achievements_pages, total_pages)
+    |> assign(
+      :achievements_page_form,
+      to_form(%{"page" => Integer.to_string(current_page)}, as: :ach_page_jump)
+    )
   end
+
+  defp safe_count_available(nil, _query), do: 0
+
+  defp safe_count_available(scope, query) do
+    if function_exported?(Accounts, :count_achieved_achievements, 2) do
+      try do
+        opts = if to_string(query) == "", do: [], else: [search: to_string(query)]
+        Accounts.count_achieved_achievements(scope, opts) || 0
+      rescue
+        _ -> 0
+      end
+    else
+      0
+    end
+  end
+
+  defp ceil_div(_numerator, denominator) when denominator <= 0, do: 0
+  defp ceil_div(numerator, _denominator) when numerator <= 0, do: 0
+  defp ceil_div(numerator, denominator), do: div(numerator + denominator - 1, denominator)
 
   defp parse_int(v) when is_integer(v), do: v
 
@@ -459,7 +512,7 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
       <div class="mt-4 text-sm text-gray-400" id="profile-bio">
         <p class="profile-bio">{profile_bio(@profile)}</p>
       </div>
-
+      
     <!-- Pinned Achievements -->
       <div class="mt-6">
         <div class="flex items-center justify-between mb-4">
@@ -763,7 +816,9 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
                   </div>
                   <div class="min-w-0 flex-1">
                     <div class="mm-name">{ach.name || "Conquista"}</div>
-                    <div :if={achievement_game(ach) != ""} class="mm-game">{achievement_game(ach)}</div>
+                    <div :if={achievement_game(ach) != ""} class="mm-game">
+                      {achievement_game(ach)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -774,8 +829,14 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
             id="manage-achievements-pagination"
             class="mt-4 flex flex-col gap-3 border-t border-gray-700/80 pt-4 sm:flex-row sm:items-center sm:justify-between"
           >
-            <span class="text-xs text-gray-400">Página {@achievements_page}</span>
-            <div class="flex items-center justify-end gap-2">
+            <div class="text-xs text-gray-400">
+              Página <span class="font-semibold text-white">{@achievements_page}</span>
+              de <span class="font-semibold text-white">{@total_achievements_pages}</span>
+              <span class="mx-2 text-gray-600">·</span>
+              <span class="font-semibold text-white">{@total_achievements}</span>
+              {if @total_achievements == 1, do: "conquista", else: "conquistas"}
+            </div>
+            <div class="flex flex-wrap items-center justify-end gap-2">
               <button
                 id="manage-achievements-previous-page"
                 type="button"
@@ -791,6 +852,26 @@ defmodule ProjetoPrismaWeb.ProfileCardLive do
               >
                 <.icon name="hero-chevron-left" class="size-4" /> Anterior
               </button>
+
+              <.form
+                for={@achievements_page_form}
+                id="manage-achievements-page-form"
+                phx-submit="go_to_achievements_page"
+                phx-change="go_to_achievements_page"
+                class="flex items-center gap-2"
+              >
+                <input
+                  type="number"
+                  name="ach_page_jump[page]"
+                  value={@achievements_page_form[:page].value}
+                  min="1"
+                  max={@total_achievements_pages}
+                  inputmode="numeric"
+                  phx-debounce="blur"
+                  aria-label="Ir para página"
+                  class="w-20 rounded-xl border border-gray-700 bg-gray-900/80 px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-emerald-400"
+                />
+              </.form>
 
               <button
                 id="manage-achievements-next-page"

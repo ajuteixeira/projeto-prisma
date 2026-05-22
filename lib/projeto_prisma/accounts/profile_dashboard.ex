@@ -58,11 +58,52 @@ defmodule ProjetoPrisma.Accounts.ProfileDashboard do
       limit: limit,
       offset: Keyword.get(opts, :offset, 0),
       sort_order: Keyword.get(opts, :sort_order, :desc),
-      search_query: Keyword.get(opts, :search_query, "")
+      sort_by: Keyword.get(opts, :sort_by, :last_played),
+      search_query: Keyword.get(opts, :search_query, ""),
+      platform_id: Keyword.get(opts, :platform_id)
     )
   end
 
   def list_games(_, _, _), do: []
+
+  @doc """
+  Conta o total de jogos do perfil aplicando os filtros opcionais (busca por nome
+  e plataforma).
+  """
+  def count_games(profile_id, opts \\ [])
+
+  def count_games(profile_id, opts) when is_integer(profile_id) and is_list(opts) do
+    search_query = normalize_search_query(Keyword.get(opts, :search_query, ""))
+    platform_id = Keyword.get(opts, :platform_id)
+
+    ProfileGame
+    |> where([pg], pg.profile_id == ^profile_id)
+    |> join(:inner, [pg], pgame in assoc(pg, :platform_game))
+    |> join(:inner, [_pg, pgame], g in assoc(pgame, :game))
+    |> maybe_filter_by_game_name(search_query)
+    |> maybe_filter_by_platform(platform_id)
+    |> select([pg, _pgame, _g], count(pg.id))
+    |> Repo.one()
+    |> Kernel.||(0)
+  end
+
+  def count_games(_, _), do: 0
+
+  @doc """
+  Lista plataformas distintas presentes nos jogos do perfil, ordenadas pelo nome.
+  """
+  def list_profile_platforms(profile_id) when is_integer(profile_id) do
+    ProfileGame
+    |> where([pg], pg.profile_id == ^profile_id)
+    |> join(:inner, [pg], pgame in assoc(pg, :platform_game))
+    |> join(:inner, [_pg, pgame], p in assoc(pgame, :platform))
+    |> distinct([_pg, _pgame, p], p.id)
+    |> order_by([_pg, _pgame, p], asc: p.name)
+    |> select([_pg, _pgame, p], %{id: p.id, name: p.name, slug: p.slug})
+    |> Repo.all()
+  end
+
+  def list_profile_platforms(_), do: []
 
   @doc """
   Retorna cards de estatisticas gerais do perfil.
@@ -197,8 +238,10 @@ defmodule ProjetoPrisma.Accounts.ProfileDashboard do
     limit = Keyword.get(opts, :limit)
     offset = Keyword.get(opts, :offset, 0)
     sort_order = Keyword.get(opts, :sort_order, :desc)
+    sort_by = Keyword.get(opts, :sort_by, :last_played)
     profile_game_id = Keyword.get(opts, :profile_game_id)
     search_query = normalize_search_query(Keyword.get(opts, :search_query, ""))
+    platform_id = Keyword.get(opts, :platform_id)
 
     base_query =
       ProfileGame
@@ -208,7 +251,8 @@ defmodule ProjetoPrisma.Accounts.ProfileDashboard do
       |> join(:inner, [_pg, pgame, _g], p in assoc(pgame, :platform))
       |> maybe_filter_by_profile_game_id(profile_game_id)
       |> maybe_filter_by_game_name(search_query)
-      |> sort_by_last_played(sort_order)
+      |> maybe_filter_by_platform(platform_id)
+      |> apply_sort(sort_by, sort_order)
       |> select([pg, pgame, g, p], %{
         profile_game_id: pg.id,
         platform_game_id: pgame.id,
@@ -270,15 +314,47 @@ defmodule ProjetoPrisma.Accounts.ProfileDashboard do
   defp maybe_filter_by_game_name(query, ""), do: query
 
   defp maybe_filter_by_game_name(query, search_query) do
-    where(query, [_pg, _pgame, g, _p], ilike(g.name, ^"%#{search_query}%"))
+    where(query, [_pg, _pgame, g], ilike(g.name, ^"%#{search_query}%"))
   end
 
-  defp sort_by_last_played(query, :asc) do
-    order_by(query, [pg, _pgame, _g, _p], asc_nulls_last: pg.last_played, asc: pg.id)
+  defp maybe_filter_by_platform(query, platform_id) when is_integer(platform_id) do
+    where(query, [_pg, pgame], pgame.platform_id == ^platform_id)
   end
 
-  defp sort_by_last_played(query, _sort_order) do
-    order_by(query, [pg, _pgame, _g, _p], desc_nulls_last: pg.last_played, desc: pg.id)
+  defp maybe_filter_by_platform(query, _platform_id), do: query
+
+  defp apply_sort(query, :completion, :asc) do
+    order_by(query, [pg, pgame], [
+      {:asc_nulls_last,
+       fragment(
+         "CASE WHEN (SELECT COUNT(*) FROM achievements WHERE platform_game_id = ?) = 0 THEN NULL ELSE (SELECT COUNT(*) FROM profile_achievements WHERE profile_game_id = ? AND achieved = true)::float / (SELECT COUNT(*) FROM achievements WHERE platform_game_id = ?) END",
+         pgame.id,
+         pg.id,
+         pgame.id
+       )},
+      {:asc, pg.id}
+    ])
+  end
+
+  defp apply_sort(query, :completion, _order) do
+    order_by(query, [pg, pgame], [
+      {:desc_nulls_last,
+       fragment(
+         "CASE WHEN (SELECT COUNT(*) FROM achievements WHERE platform_game_id = ?) = 0 THEN NULL ELSE (SELECT COUNT(*) FROM profile_achievements WHERE profile_game_id = ? AND achieved = true)::float / (SELECT COUNT(*) FROM achievements WHERE platform_game_id = ?) END",
+         pgame.id,
+         pg.id,
+         pgame.id
+       )},
+      {:desc, pg.id}
+    ])
+  end
+
+  defp apply_sort(query, _sort_by, :asc) do
+    order_by(query, [pg], asc_nulls_last: pg.last_played, asc: pg.id)
+  end
+
+  defp apply_sort(query, _sort_by, _order) do
+    order_by(query, [pg], desc_nulls_last: pg.last_played, desc: pg.id)
   end
 
   defp normalize_search_query(search_query) when is_binary(search_query) do
